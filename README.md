@@ -4,6 +4,8 @@ This project implements a simple client-server communication system using socket
 
 ## Getting Started
 
+[demo video](https://youtu.be/eVZX76FQUVY)
+
 ### Prerequisites
 This project is designed to run in a Linux environment. Ensure you have the following tools installed:
 - C++ Compiler
