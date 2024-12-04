@@ -9,6 +9,7 @@
 - [ ] streaming
     - [ ] audio
     - [ ] video
+- [ ] 5~10 min demo video
 
 ## bonus
 
