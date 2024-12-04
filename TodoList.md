@@ -1,6 +1,6 @@
 # Todo list
 
-- [ ] multithread
+- [x] multithread
 - [ ] send chat message
     - [ ] relay mode
     - [ ] direct mode
