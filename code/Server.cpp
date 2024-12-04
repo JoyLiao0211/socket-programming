@@ -1,9 +1,12 @@
 #include <bits/stdc++.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <unistd.h>    // For close()
-#include <arpa/inet.h> // For inet_ntoa()
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
 #include "Parse.h"
+#include <errno.h>
+#include <cstdint>
 using namespace std;
 
 struct User {
@@ -19,12 +22,61 @@ struct Client {
 };
 
 vector<User> users;
-vector<Client> clients;
+queue<Client> client_queue;
+vector<pthread_t> worker_threads;
+const int NUM_WORKERS = 4;
+
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
+
+// Function to read exactly n bytes from a descriptor
+ssize_t readn(int fd, void *vptr, size_t n) {
+    size_t  nleft;
+    ssize_t nread;
+    char   *ptr;
+
+    ptr = (char*)vptr;
+    nleft = n;
+    while (nleft > 0) {
+        if ( (nread = read(fd, ptr, nleft)) <= 0) {
+            if (nread == -1 && errno == EINTR)
+                nread = 0;      // and call read() again
+            else
+                return -1;
+        }
+
+        nleft -= nread;
+        ptr   += nread;
+    }
+    return n;
+}
+
+// Function to write exactly n bytes to a descriptor
+ssize_t writen(int fd, const void *vptr, size_t n) {
+    size_t      nleft;
+    ssize_t     nwritten;
+    const char *ptr;
+
+    ptr = (const char*)vptr;
+    nleft = n;
+    while (nleft > 0) {
+        if ( (nwritten = write(fd, ptr, nleft)) <= 0) {
+            if (nwritten == -1 && errno == EINTR)
+                nwritten = 0;   // and call write() again
+            else
+                return -1;
+        }
+
+        nleft -= nwritten;
+        ptr   += nwritten;
+    }
+    return n;
+}
 
 string handle_client_message(Client &client, const string &message) {
     // Parse message using `$` as the delimiter
     auto tokens = parse_message(message, '$');
-    if (tokens.empty()) return "$1$";  // 1 indicates "Invalid command"
+    if (tokens.empty()) return "$5$";  // 1 indicates "Invalid command"
 
     // Check command type based on the first token
     if (tokens[0] == "1" && tokens.size() >= 3) {
@@ -72,6 +124,86 @@ string handle_client_message(Client &client, const string &message) {
     return "$1$";  // Code 1: Unrecognized command
 }
 
+void* worker_function(void* arg) {
+    while (true) {
+        Client client(-1);
+
+        // Lock the queue and wait for a client
+        pthread_mutex_lock(&queue_mutex);
+        while (client_queue.empty()) {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 5;  // Timeout after 5 seconds
+            int ret = pthread_cond_timedwait(&queue_cond, &queue_mutex, &ts);
+            if (ret == ETIMEDOUT && client_queue.empty()) {
+                pthread_mutex_unlock(&queue_mutex);
+                continue;
+            }
+        }
+
+        // Get the next client from the queue
+        client = client_queue.front();
+        client_queue.pop();
+        pthread_mutex_unlock(&queue_mutex);
+
+        // Read the length of the incoming message
+        uint32_t msg_length_net;
+        ssize_t n = readn(client.socket, &msg_length_net, sizeof(msg_length_net));
+        if (n <= 0) {
+            cout << "Client disconnected.\n";
+            close(client.socket);
+            continue;
+        }
+
+        uint32_t msg_length = ntohl(msg_length_net);
+        if (msg_length == 0) {
+            cerr << "Received message with length 0. Skipping.\n";
+            continue;
+        }
+
+        // Read the message body
+        vector<char> buffer(msg_length);
+        n = readn(client.socket, buffer.data(), msg_length);
+        if (n <= 0) {
+            cout << "Client disconnected.\n";
+            close(client.socket);
+            continue;
+        }
+
+        string message(buffer.begin(), buffer.end());
+
+        // Process the message and prepare a response
+        string response = handle_client_message(client, message);
+
+        // Send the length of the response
+        uint32_t response_length = response.size();
+        uint32_t response_length_net = htonl(response_length);
+        n = writen(client.socket, &response_length_net, sizeof(response_length_net));
+        if (n <= 0) {
+            cout << "Failed to send response length.\n";
+            close(client.socket);
+            continue;
+        }
+
+        // Send the response message
+        n = writen(client.socket, response.c_str(), response_length);
+        if (n <= 0) {
+            cout << "Failed to send response message.\n";
+            close(client.socket);
+            continue;
+        }
+
+        cout << "Response sent to client: " << response << "\n";
+
+        // Push the client back to the queue for further communication
+        pthread_mutex_lock(&queue_mutex);
+        client_queue.push(client);
+        pthread_mutex_unlock(&queue_mutex);
+        pthread_cond_signal(&queue_cond);
+    }
+    return nullptr;
+}
+
 int main() {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
@@ -79,6 +211,14 @@ int main() {
         return -1;
     }
     cout << "Socket created successfully: " << server_fd << "\n";
+
+    // Set socket options to allow address reuse
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        cerr << "setsockopt failed! errno: " << errno << "\n";
+        close(server_fd);
+        return -1;
+    }
 
     // Server address setup
     sockaddr_in address;
@@ -102,65 +242,34 @@ int main() {
     }
     cout << "Server listening on port 8080...\n";
 
-    fd_set read_fds;
-    
-    while (true) {
-        // Reset max_sd and file descriptor set
-        int max_sd = server_fd;
-        FD_ZERO(&read_fds);
-        FD_SET(server_fd, &read_fds);
-
-        // Add client sockets to the set and update max_sd
-        for (const Client &client : clients) {
-            FD_SET(client.socket, &read_fds);
-            max_sd = max(max_sd, client.socket);
-        }
-
-        // Wait for an activity on one of the sockets
-        int activity = select(max_sd + 1, &read_fds, nullptr, nullptr, nullptr);
-        if ((activity < 0) && (errno != EINTR)) {
-            cerr << "select error" << endl;
-        }
-
-        // Check if there is a new incoming connection
-        if (FD_ISSET(server_fd, &read_fds)) {
-            int new_socket = accept(server_fd, nullptr, nullptr);
-            if (new_socket < 0) {
-                cerr << "Accept failed! errno: " << errno << "\n";
-            } else {
-                cout << "New client connected!\n";
-                clients.emplace_back(new_socket);
-            }
-        }
-
-        // Iterate over clients to check for incoming messages
-        for (auto it = clients.begin(); it != clients.end(); ) {
-            Client &client = *it;
-            
-            // Check if there is data to read from this client
-            if (FD_ISSET(client.socket, &read_fds)) {
-                char buffer[1024] = {0};
-                int bytes_received = read(client.socket, buffer, sizeof(buffer) - 1);
-
-                // If the client has disconnected, remove it from the list
-                if (bytes_received <= 0) {
-                    cout << "Client disconnected.\n";
-                    close(client.socket);
-                    it = clients.erase(it);  // Move iterator to the next element
-                    continue;  // Skip the increment as erase() has updated the iterator
-                }
-
-                // Handle client message
-                string response = handle_client_message(client, buffer);
-                send(client.socket, response.c_str(), response.size(), 0);
-                cout << "Response sent to client: " << response << "\n";
-            }
-            
-            // Increment the iterator only if no client was erased
-            ++it;
-        }
+    // Create worker threads
+    worker_threads.resize(NUM_WORKERS);
+    for (int i = 0; i < NUM_WORKERS; ++i) {
+        pthread_create(&worker_threads[i], nullptr, worker_function, nullptr);
     }
 
+    // Accept clients and add them to the queue
+    while (true) {
+        int new_socket = accept(server_fd, nullptr, nullptr);
+        if (new_socket < 0) {
+            cerr << "Accept failed! errno: " << errno << "\n";
+            continue;
+        }
+        cout << "New client connected!\n";
+
+        // Lock the queue and add the new client
+        pthread_mutex_lock(&queue_mutex);
+        client_queue.emplace(new_socket);
+        pthread_mutex_unlock(&queue_mutex);
+
+        // Signal a worker thread that a client is available
+        pthread_cond_broadcast(&queue_cond);
+    }
+
+    // Clean up
+    for (pthread_t &thread : worker_threads) {
+        pthread_join(thread, nullptr);
+    }
     close(server_fd);
     return 0;
 }
