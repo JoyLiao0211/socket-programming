@@ -1,8 +1,10 @@
-# Socket Programming Project - Phase 1
+# Socket Programming Project
+
+## Phase 1
 
 This project implements a simple client-server communication system using socket programming.
 
-## Getting Started
+### Getting Started
 
 [demo video](https://youtu.be/eVZX76FQUVY)
 
@@ -11,7 +13,7 @@ This project is designed to run in a Linux environment. Ensure you have the foll
 - C++ Compiler
 - Make
 
-## Building the Project
+### Building the Project
 
 To build the server and client:
 
@@ -32,7 +34,7 @@ make clean
 
 This cleans up all compiled binaries and object files.
 
-## Running the Project
+### Running the Project
 
 1. **Start the Server**  
    Open a terminal and run:
@@ -52,8 +54,9 @@ This cleans up all compiled binaries and object files.
 
    The client will connect to the server, enabling user interactions as defined in your project.
 
-## Important Notes
+### Important Notes
 
 - **Server Persistence**: The server must remain active to retain account data. If the server is stopped, all registered data will be lost.
 - **Multiple Clients**: This setup supports multiple clients interacting with the server simultaneously, provided that socket connections are handled correctly.
 
+## Phase 2
