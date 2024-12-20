@@ -1,16 +1,24 @@
-# Compiler and flags
+# Compiler and Flags
 CXX = g++
-CXXFLAGS = -Wall -g
+CXXFLAGS = -Wall -g -I./include
+
+# Source Files
+SRCS = Client.cpp Server.cpp
+OBJS = $(SRCS:.cpp=.o)
 
 # Targets
-TARGETS = server client
+TARGETS = Client Server
 
-# Build all targets
-all:
-	@for target in $(TARGETS); do \
-		$(CXX) $(CXXFLAGS) -o $$target $$target.cpp Parse.cpp; \
-	done
+all: $(TARGETS)
 
-# Clean up generated files
+Client: Client.o
+	$(CXX) $(CXXFLAGS) -o Client Client.o
+
+Server: Server.o
+	$(CXX) $(CXXFLAGS) -o Server Server.o -lpthread
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 clean:
-	rm -f $(TARGETS) *.o
+	rm -f $(OBJS) $(TARGETS)

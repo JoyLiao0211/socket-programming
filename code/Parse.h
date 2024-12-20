@@ -1,5 +1,5 @@
-// parse.h
+// Parse.h
 #include <vector>
 #include <string>
 
-std::vector<std::string> parse_message(const std::string& msg, char delimiter = '$');
+std::vector<std::string> parse_message(std::string& msg, char delimiter = '$', int num_tokens = 3);

@@ -3,179 +3,91 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <nlohmann/json.hpp>
+#include "SocketIO.hpp"
 #include "Code.h"
-#include "Parse.h"
-#include <errno.h>
-#include <cstdint>
+
 using namespace std;
+using json = nlohmann::json;
 
-// Function to read exactly n bytes from a descriptor
-ssize_t readn(int fd, void *vptr, size_t n) {
-    size_t  nleft;
-    ssize_t nread;
-    char   *ptr;
-
-    ptr = (char*)vptr;
-    nleft = n;
-    while (nleft > 0) {
-        if ( (nread = read(fd, ptr, nleft)) <= 0) {
-            if (nread == -1 && errno == EINTR)
-                nread = 0;      // and call read() again
-            else
-                return -1;
-        }
-
-        nleft -= nread;
-        ptr   += nread;
+int create_socket() {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1) {
+        cerr << "Socket creation error!\n";
+        exit(-1);
     }
-    return n;
+    return sock;
 }
 
-// Function to write exactly n bytes to a descriptor
-ssize_t writen(int fd, const void *vptr, size_t n) {
-    size_t      nleft;
-    ssize_t     nwritten;
-    const char *ptr;
+void connect_to_server(int sock, const string& ip, uint16_t port) {
+    sockaddr_in server_address = {0};
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(port);
+    inet_pton(AF_INET, ip.c_str(), &server_address.sin_addr);
 
-    ptr = (const char*)vptr;
-    nleft = n;
-    while (nleft > 0) {
-        if ( (nwritten = write(fd, ptr, nleft)) <= 0) {
-            if (nwritten == -1 && errno == EINTR)
-                nwritten = 0;   // and call write() again
-            else
-                return -1;
-        }
-
-        nleft -= nwritten;
-        ptr   += nwritten;
+    if (connect(sock, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+        cerr << "Connection Failed!\n";
+        close(sock);
+        exit(-1);
     }
-    return n;
+}
+
+map<string, string> cmd_to_type = {
+    {"1", "Login"},
+    {"2", "Register"},
+    {"3", "OnlineUsers"}
+};
+
+string construct_message(const string& cmd, const string& username, const string& password) {
+    json message;
+    message["type"] = cmd_to_type[cmd];
+    if (!username.empty()) message["username"] = username;
+    if (!password.empty()) message["password"] = password;
+    return message.dump();
+}
+
+void send_message(int sock, const string& message) {
+    uint32_t msg_length = message.size();
+    uint32_t msg_length_net = htonl(msg_length);
+    writen(sock, &msg_length_net, sizeof(msg_length_net));
+    writen(sock, message.c_str(), msg_length);
+}
+
+string receive_response(int sock) {
+    uint32_t resp_length_net;
+    readn(sock, &resp_length_net, sizeof(resp_length_net));
+    uint32_t resp_length = ntohl(resp_length_net);
+    vector<char> buffer(resp_length);
+    readn(sock, buffer.data(), resp_length);
+    return string(buffer.begin(), buffer.end());
 }
 
 int main() {
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1) {
-        cerr << "Socket creation error! errno: " << errno << "\n";
-        return -1;
-    }
-    cout << "Socket created successfully: " << sock << "\n";
+    int sock = create_socket();
+    connect_to_server(sock, "127.0.0.1", 8080);
 
-    // Server address setup
-    sockaddr_in server_address;
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(8080);  // Port to connect to (convert to network byte order)
-    
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &server_address.sin_addr) <= 0) {
-        cerr << "Invalid address / Address not supported\n";
-        close(sock);
-        return -1;
-    }
-
-    // Connect to the server
-    if (connect(sock, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
-        cerr << "Connection Failed! errno: " << errno << "\n";
-        close(sock);
-        return -1;
-    }
-    cout << "Connected to server!\n";
-    bool logged_in = false;
-    string username;
-
-    // Client interaction loop
     while (true) {
-        if (logged_in){
-            cout << "Logged in as " << username << "!\n";
-        }
-        else{
-            cout << "Enter 1 to log in\nEnter 2 to register\n";
-        }
-        cout << "Enter 0 to close app\n";
-        string cmd;
+        cout << "1: Login, 2: Register, 3: Online Users, 0: Exit\n";
+        string cmd, username, password;
         cin >> cmd;
 
-        if (cmd == "0") {
-            cout << "Exiting...\n";
-            break;
-        }
-
-        string usr, pwd;
-        string message;
-
-        if (cmd == "1") {
-            // Login request
+        if (cmd == "0") break;
+        if (cmd == "1" || cmd == "2") {
             cout << "Username: ";
-            cin >> usr;
+            cin >> username;
             cout << "Password: ";
-            cin >> pwd;
-
-            // Format message as "$1$<username>$<password>$"
-            message = "$1$" + usr + "$" + pwd + "$";
-        }
-        else if (cmd == "2") {
-            // Registration request
-            cout << "Username: ";
-            cin >> usr;
-            cout << "Password: ";
-            cin >> pwd;
-
-            // Format message as "$2$" + username + "$" + password + "$"
-            message = "$2$" + usr + "$" + pwd + "$";
-        }
-        else {
-            cout << "Invalid command. Try again.\n";
-            continue;
+            cin >> password;
         }
 
-        // Send the length of the message
-        uint32_t msg_length = message.size();
-        uint32_t msg_length_net = htonl(msg_length);
-        ssize_t n = writen(sock, &msg_length_net, sizeof(msg_length_net));
-        if (n <= 0) {
-            cerr << "Failed to send message length. errno: " << errno << "\n";
-            break;
-        }
+        string message = construct_message(cmd, username, password);
+        send_message(sock, message);
 
-        // Send the message body
-        n = writen(sock, message.c_str(), msg_length);
-        if (n <= 0) {
-            cerr << "Failed to send message body. errno: " << errno << "\n";
-            break;
-        }
-
-        // Receive a response from the server
-        // Read the length of the response
-        uint32_t resp_length_net;
-        n = readn(sock, &resp_length_net, sizeof(resp_length_net));
-        if (n <= 0) {
-            cout << "No response from server or connection lost.\n";
-            break;
-        }
-        uint32_t resp_length = ntohl(resp_length_net);
-
-        // Read the response body
-        vector<char> resp_buffer(resp_length);
-        n = readn(sock, resp_buffer.data(), resp_length);
-        if (n <= 0) {
-            cout << "No response from server or connection lost.\n";
-            break;
-        }
-        string response(resp_buffer.begin(), resp_buffer.end());
-
-        // Process the response
-        vector<string> mes = parse_message(response);
-        for (string s : mes) {
-            cout << "Message received from server: " << RESPONSE_MESSAGES[stoi(s)] << "\n";
-            if (cmd == "1" && stoi(s) == 0) {
-                logged_in = true;
-                username = usr;
-            }
-        }
+        string response = receive_response(sock);
+        json res_json = json::parse(response);
+        cout << res_json.dump(4) << endl;
+        cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
     }
 
-    // Close the socket
     close(sock);
-    cout << "Disconnected from server.\n";
     return 0;
 }

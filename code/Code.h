@@ -1,5 +1,3 @@
-
-
 #include <string>
 
 // Array of response messages where the index represents the code
