@@ -10,6 +10,8 @@
 using namespace std;
 using json = nlohmann::json;
 
+bool logged_in = false;
+
 int create_socket() {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
@@ -35,14 +37,17 @@ void connect_to_server(int sock, const string& ip, uint16_t port) {
 map<string, string> cmd_to_type = {
     {"1", "Login"},
     {"2", "Register"},
-    {"3", "OnlineUsers"}
+    {"3", "OnlineUsers"},
+    {"4", "SendMessage"}
 };
 
-string construct_message(const string& cmd, const string& username, const string& password) {
+string construct_message(const string& cmd, const string& username, const string& password, const string& message_body) {
     json message;
     message["type"] = cmd_to_type[cmd];
     if (!username.empty()) message["username"] = username;
     if (!password.empty()) message["password"] = password;
+    if (!message_body.empty()) message["message"] = message_body;
+    cout << message.dump(4) << endl;
     return message.dump();
 }
 
@@ -66,9 +71,12 @@ int main() {
     int sock = create_socket();
     connect_to_server(sock, "127.0.0.1", 8080);
 
+    //todo: receive message from other users
+    
     while (true) {
-        cout << "1: Login, 2: Register, 3: Online Users, 0: Exit\n";
+        cout << "1: Login, 2: Register, 3: Online Users, 4: Send Message 0: Exit\n";
         string cmd, username, password;
+        string message_body;
         cin >> cmd;
 
         if (cmd == "0") break;
@@ -78,14 +86,28 @@ int main() {
             cout << "Password: ";
             cin >> password;
         }
+        else if(cmd == "4") {
+            if(!logged_in) {
+                cout << "You need to login first\n";
+                continue;
+            }
+            cout << "Enter the username of the recipient: ";
+            cin >> username;
+            cout << "Enter the message: ";
+            while(message_body=="")getline(cin, message_body);
+            // cin >> message_body;
+        }
 
-        string message = construct_message(cmd, username, password);
+        string message = construct_message(cmd, username, password, message_body);
         send_message(sock, message);
 
         string response = receive_response(sock);
         json res_json = json::parse(response);
         cout << res_json.dump(4) << endl;
         cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
+        if(res_json["code"].get<int>() == 0 && res_json["type"] == "Login") {
+            logged_in = true;
+        }
     }
 
     close(sock);

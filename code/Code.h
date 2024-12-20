@@ -7,6 +7,8 @@ const std::string RESPONSE_MESSAGES[] = {
     "Incorrect password",     // Code 2
     "Username not found",     // Code 3
     "Username already exists",// Code 4
-    "Invalid command"         // Code 5 
+    "Invalid command",         // Code 5 
+    "Not logged in",            // Code 6
+    "Recipient not found"      // Code 7
 };
 

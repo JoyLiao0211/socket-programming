@@ -10,16 +10,18 @@
 using namespace std;
 using json = nlohmann::json;
 
-struct User {
-    string username, password;
-};
-
 struct Client {
     int uid = -1;
     string message = "";
     int socket;
 
     Client(int _socket) : socket(_socket) {}
+};
+
+struct User {
+    string username, password;
+    bool online;
+    Client* client;
 };
 
 vector<User> users;
@@ -38,7 +40,7 @@ string handle_client_message(Client &client) {
     if (request["type"] == "Login") {
         string username = request["username"];
         string password = request["password"];
-        for (const auto &user : users) {
+        for (auto &user : users) {
             if (user.username == username) {
                 if (user.password == password) {
                     if (client.uid != -1) {
@@ -47,6 +49,8 @@ string handle_client_message(Client &client) {
                         return response.dump();
                     }
                     client.uid = &user - &users[0];
+                    user.online = true;
+                    user.client = &client;
                     response["type"] = "Login";
                     response["code"] = 0;  // Success
                     return response.dump();
@@ -69,7 +73,7 @@ string handle_client_message(Client &client) {
                 return response.dump();
             }
         }
-        users.push_back({username, password});
+        users.push_back({username, password, 0});
         response["type"] = "Register";
         response["code"] = 0;  // Registration success
         return response.dump();
@@ -77,10 +81,38 @@ string handle_client_message(Client &client) {
         response["type"] = "OnlineUsers";
         response["code"] = 0;
         vector<string> online_users;
-        for (const auto &user : users) {
+        for (const auto &user : users) if(user.online) {
             online_users.push_back(user.username);
         }
         response["users"] = online_users;
+        return response.dump();
+    } else if (request["type"] == "SendMessage") {
+        if (client.uid == -1) {
+            response["type"] = "SendMessage";
+            response["code"] = 6;  // Not logged in
+            return response.dump();
+        }
+        string recipient = request["username"];
+        string message = request["message"];
+        for (const auto &user : users) {
+            if (user.username == recipient && user.online) {
+                // send message to recipient
+                json message_json;
+                message_json["type"] = "NewMessage";
+                message_json["from"] = users[client.uid].username;
+                message_json["message"] = message;
+                string message_str = message_json.dump();
+                uint32_t msg_length = message_str.size();
+                uint32_t msg_length_net = htonl(msg_length);
+                writen(user.client->socket, &msg_length_net, sizeof(msg_length_net));
+                
+                response["type"] = "SendMessage";
+                response["code"] = 0;  // Success
+                return response.dump();
+            }
+        }
+        response["type"] = "SendMessage";
+        response["code"] = 7;  // Recipient not found
         return response.dump();
     }
 
@@ -101,6 +133,10 @@ void* worker_function(void* arg) {
 
         uint32_t msg_length_net;
         if (readn(client.socket, &msg_length_net, sizeof(msg_length_net)) <= 0) {
+            if(client.uid != -1) {
+                users[client.uid].online = false;
+                users[client.uid].client = nullptr;
+            }
             close(client.socket);
             continue;
         }
