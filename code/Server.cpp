@@ -5,7 +5,10 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <nlohmann/json.hpp>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include "SocketIO.hpp"
+#include "SSL.hpp"
 
 using namespace std;
 using json = nlohmann::json;
@@ -14,8 +17,9 @@ struct Client {
     int uid = -1;
     string message = "";
     int socket;
+    SSL * ssl;
 
-    Client(int _socket) : socket(_socket) {}
+    Client(int _socket, SSL * _ssl) : socket(_socket), ssl(_ssl){}
 };
 
 struct User {
@@ -115,7 +119,7 @@ json handle_client_message(Client &client) {
                 message_json["type"] = "NewMessage";
                 message_json["from"] = users[client.uid].username;
                 message_json["message"] = message;
-                if(!send_json(user.client->socket, message_json)){
+                if(!send_json(user.client->ssl, message_json)){
                     break;
                 }
                 response["type"] = "SendMessage";
@@ -151,21 +155,21 @@ void* worker_function(void* arg) {
         pthread_mutex_unlock(&queue_mutex);
 
         uint32_t msg_length_net;
-        if (readn(client.socket, &msg_length_net, sizeof(msg_length_net)) <= 0) {
+        if (readn(client.ssl, &msg_length_net, sizeof(msg_length_net)) <= 0) {
             client_disconnect(client);
             continue;
         }
 
         uint32_t msg_length = ntohl(msg_length_net);
         vector<char> buffer(msg_length);
-        if (readn(client.socket, buffer.data(), msg_length) <= 0) {
+        if (readn(client.ssl, buffer.data(), msg_length) <= 0) {
             client_disconnect(client);
             continue;
         }
 
         client.message = string(buffer.begin(), buffer.end());
         json response = handle_client_message(client);
-        if(!send_json(client.socket, response)){
+        if(!send_json(client.ssl, response)){
             client_disconnect(client);
             continue;
         }
@@ -174,7 +178,14 @@ void* worker_function(void* arg) {
     return nullptr;
 }
 
+
+
 int main() {
+    initialize_openssl();
+
+    SSL_CTX* ctx = create_ssl_server_context();
+    configure_ssl_context(ctx);
+
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         cerr << "Socket creation error!\n";
@@ -205,8 +216,14 @@ int main() {
         int new_socket = accept(server_fd, nullptr, nullptr);
         if (new_socket < 0) continue;
 
+        SSL* ssl = SSL_new(ctx);
+        SSL_set_fd(ssl, new_socket);
+        if (SSL_accept(ssl) <= 0) {
+            ERR_print_errors_fp(stderr);
+        } 
+
         pthread_mutex_lock(&queue_mutex);
-        client_queue.emplace(new_socket);
+        client_queue.emplace(new_socket, ssl);
         pthread_mutex_unlock(&queue_mutex);
         pthread_cond_signal(&queue_cond);
     }
@@ -215,6 +232,8 @@ int main() {
         pthread_join(thread, nullptr);
     }
     close(server_fd);
+    SSL_CTX_free(ctx);
+    cleanup_openssl();
     return 0;
 }
 #include <iostream>

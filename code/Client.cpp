@@ -7,12 +7,14 @@
 #include <thread>
 #include "SocketIO.hpp"
 #include "Code.h"
+#include "SSL.hpp"
 
 using namespace std;
 using json = nlohmann::json;
 
 queue<json> message_queue;
 int sock;
+SSL *ssl;
 bool logged_in = false;
 bool allow_direct_messages = false;
 
@@ -73,17 +75,17 @@ json construct_message(const string& type, const string& username, const string&
 void receive_response_thread() {
     while (true) {
         uint32_t resp_length_net;
-        if (readn(sock, &resp_length_net, sizeof(resp_length_net)) <= 0) {
-            cerr << "Connection closed by server.\n";
+        if (readn(ssl, &resp_length_net, sizeof(resp_length_net)) <= 0) {
+            std::cerr << "Connection closed by server.\n";
             exit(-1);
         }
         uint32_t resp_length = ntohl(resp_length_net);
-        vector<char> buffer(resp_length);
-        if (readn(sock, buffer.data(), resp_length) <= 0) {
-            cerr << "Connection closed by server.\n";
+        std::vector<char> buffer(resp_length);
+        if (readn(ssl, buffer.data(), resp_length) <= 0) {
+            std::cerr << "Connection closed by server.\n";
             exit(-1);
         }
-        string response_string = string(buffer.begin(), buffer.end());
+        std::string response_string = std::string(buffer.begin(), buffer.end());
         json response = json::parse(response_string);
         if (response["type"] == "NewMessage") {
             cout << "You got a new message from " << response["from"] << "\n";
@@ -114,7 +116,7 @@ void process_command(const string& cmd) {
     if(cmd == "1"){//login / logout
         if (logged_in) {//logout
             json message = construct_message("Logout", "", "", "");
-            send_json(sock, message);
+            send_json(ssl, message);
             json res_json = get_response();
             cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
             if (res_json["code"].get<int>() == 0) {
@@ -126,7 +128,7 @@ void process_command(const string& cmd) {
             cout << "Password: ";
             cin >> password;
             json message = construct_message("Login", username, password, "");
-            send_json(sock, message);
+            send_json(ssl, message);
             json res_json = get_response();
             cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
             if (res_json["code"].get<int>() == 0) {
@@ -140,13 +142,13 @@ void process_command(const string& cmd) {
         cout << "Password: ";
         cin >> password;
         json message = construct_message("Register", username, password, "");
-        send_json(sock, message);
+        send_json(ssl, message);
         json res_json = get_response();
         cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
     }
     else if (cmd == "3") { // see Online Users
         json message = construct_message("OnlineUsers", "", "", "");
-        send_json(sock, message);
+        send_json(ssl, message);
         json res_json = get_response();
         cout << res_json.dump(4) << endl;
     }
@@ -161,7 +163,7 @@ void process_command(const string& cmd) {
         cin.ignore();
         getline(cin, message_body);
         json message = construct_message("SendMessage", username, "", message_body);
-        send_json(sock, message);
+        send_json(ssl, message);
         json res_json = get_response();
         cout << res_json.dump(4) << endl;
         cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
@@ -185,8 +187,18 @@ void process_command(const string& cmd) {
 }
 
 int main() {
+    initialize_openssl();
+
     sock = create_socket();
     connect_to_server(sock, "127.0.0.1", 8080);
+    
+    SSL_CTX* ctx = create_ssl_client_context();
+    ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, sock);
+
+    if (SSL_connect(ssl) <= 0) {
+        ERR_print_errors_fp(stderr);
+    }
 
     thread receiver(receive_response_thread); // Start the receive response thread
 
@@ -199,6 +211,9 @@ int main() {
     }
 
     close(sock);
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
+    cleanup_openssl();
     receiver.detach(); // Detach the thread to allow it to run independently
     return 0;
 }
