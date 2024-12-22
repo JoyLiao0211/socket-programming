@@ -60,3 +60,7 @@ This cleans up all compiled binaries and object files.
 - **Multiple Clients**: This setup supports multiple clients interacting with the server simultaneously, provided that socket connections are handled correctly.
 
 ## Phase 2
+
+```
+nlohmann-json
+```

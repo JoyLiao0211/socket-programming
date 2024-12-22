@@ -32,7 +32,15 @@ const int NUM_WORKERS = 4;
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 
-string handle_client_message(Client &client) {
+void client_logout(Client &client) {
+    if (client.uid != -1) {
+        users[client.uid].online = false;
+        users[client.uid].client = nullptr;
+        client.uid = -1;
+    }
+}
+
+json handle_client_message(Client &client) {
     cout << "Received message: " << client.message << endl;
     json response;
     json request = json::parse(client.message);
@@ -46,37 +54,43 @@ string handle_client_message(Client &client) {
                     if (client.uid != -1) {
                         response["type"] = "Login";
                         response["code"] = 1;  // Already logged in
-                        return response.dump();
+                        return response;
                     }
                     client.uid = &user - &users[0];
                     user.online = true;
                     user.client = &client;
                     response["type"] = "Login";
                     response["code"] = 0;  // Success
-                    return response.dump();
+                    return response;
                 }
                 response["type"] = "Login";
                 response["code"] = 2;  // Incorrect password
-                return response.dump();
+                return response;
             }
         }
         response["type"] = "Login";
         response["code"] = 3;  // Username not found
-        return response.dump();
-    } else if (request["type"] == "Register") {
+        return response;
+    } else if(request["type"] == "Logout") {
+        client_logout(client);
+        response["type"] = "Logout";
+        response["code"] = 0;  // Success
+        return response;
+    }
+    else if (request["type"] == "Register") {
         string username = request["username"];
         string password = request["password"];
         for (const auto &user : users) {
             if (user.username == username) {
                 response["type"] = "Register";
                 response["code"] = 4;  // Username already exists
-                return response.dump();
+                return response;
             }
         }
         users.push_back({username, password, 0});
         response["type"] = "Register";
         response["code"] = 0;  // Registration success
-        return response.dump();
+        return response;
     } else if (request["type"] == "OnlineUsers") {
         response["type"] = "OnlineUsers";
         response["code"] = 0;
@@ -85,12 +99,12 @@ string handle_client_message(Client &client) {
             online_users.push_back(user.username);
         }
         response["users"] = online_users;
-        return response.dump();
+        return response;
     } else if (request["type"] == "SendMessage") {
         if (client.uid == -1) {
             response["type"] = "SendMessage";
             response["code"] = 6;  // Not logged in
-            return response.dump();
+            return response;
         }
         string recipient = request["username"];
         string message = request["message"];
@@ -101,24 +115,29 @@ string handle_client_message(Client &client) {
                 message_json["type"] = "NewMessage";
                 message_json["from"] = users[client.uid].username;
                 message_json["message"] = message;
-                string message_str = message_json.dump();
-                uint32_t msg_length = message_str.size();
-                uint32_t msg_length_net = htonl(msg_length);
-                writen(user.client->socket, &msg_length_net, sizeof(msg_length_net));
-                
+                if(!send_json(user.client->socket, message_json)){
+                    break;
+                }
                 response["type"] = "SendMessage";
                 response["code"] = 0;  // Success
-                return response.dump();
+                return response;
             }
         }
         response["type"] = "SendMessage";
         response["code"] = 7;  // Recipient not found
-        return response.dump();
+        return response;
     }
 
     response["type"] = "INVALID";
     response["code"] = 5;  // Invalid command
-    return response.dump();
+    return response;
+}
+
+
+
+void client_disconnect(Client &client) {
+    client_logout(client);
+    close(client.socket);
 }
 
 void* worker_function(void* arg) {
@@ -133,29 +152,23 @@ void* worker_function(void* arg) {
 
         uint32_t msg_length_net;
         if (readn(client.socket, &msg_length_net, sizeof(msg_length_net)) <= 0) {
-            if(client.uid != -1) {
-                users[client.uid].online = false;
-                users[client.uid].client = nullptr;
-            }
-            close(client.socket);
+            client_disconnect(client);
             continue;
         }
 
         uint32_t msg_length = ntohl(msg_length_net);
         vector<char> buffer(msg_length);
         if (readn(client.socket, buffer.data(), msg_length) <= 0) {
-            close(client.socket);
+            client_disconnect(client);
             continue;
         }
 
         client.message = string(buffer.begin(), buffer.end());
-        string response = handle_client_message(client);
-
-        uint32_t response_length = response.size();
-        uint32_t response_length_net = htonl(response_length);
-        writen(client.socket, &response_length_net, sizeof(response_length_net));
-        writen(client.socket, response.c_str(), response_length);
-
+        json response = handle_client_message(client);
+        if(!send_json(client.socket, response)){
+            client_disconnect(client);
+            continue;
+        }
         client_queue.push(client);
     }
     return nullptr;
