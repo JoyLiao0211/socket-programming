@@ -1,8 +1,8 @@
 # Todo list
 
 - [x] multithread
-- [ ] send chat message
-    - [ ] relay mode
+- [x] send chat message
+    - [x] relay mode
     - [ ] direct mode
 - [ ] Message Encryption with OpenSSL
 - [ ] transfer file with encryption
