@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <nlohmann/json.hpp>
 #include "SocketIO.hpp"
+#include "CreateMessage.hpp"
 
 using namespace std;
 using json = nlohmann::json;
@@ -69,27 +70,7 @@ void client_logout(Client &client) {
 
 void client_disconnect(Client &client) {
     client_logout(client);
-
-    // // ----- LOCK (with debug) -----
-    // {
-    //     auto user_name = getClientName(client);
-    //     cerr << "[DEBUG] Locking socket_mutex for user: " << user_name
-    //          << " at line " << __LINE__ << endl;
-    //     pthread_mutex_lock(&client.socket_mutex);
-    //     cerr << "[DEBUG] Locked socket_mutex for user: " << user_name
-    //          << " at line " << __LINE__ << endl;
-    // }
     close(client.socket);
-
-    // // ----- UNLOCK (with debug) -----
-    // {
-    //     auto user_name = getClientName(client);
-    //     cerr << "[DEBUG] Unlocking socket_mutex for user: " << user_name
-    //          << " at line " << __LINE__ << endl;
-    //     pthread_mutex_unlock(&client.socket_mutex);
-    //     cerr << "[DEBUG] Unlocked socket_mutex for user: " << user_name
-    //          << " at line " << __LINE__ << endl;
-    // }
 }
 
 bool send_json_to_client(Client &client, const json &message, bool locked=false) {
@@ -121,8 +102,7 @@ bool send_json_to_client(Client &client, const json &message, bool locked=false)
 }
 
 // ----------------------- Request Handlers ------------------------
-void handle_Login(Client &client, json &request){
-    json response;
+int login_response_code(Client &client, json &request){
     string username = request["username"];
     string password = request["password"];
     for (auto &user : users) {
@@ -130,27 +110,22 @@ void handle_Login(Client &client, json &request){
             if (user.password == password) {
                 // Already logged in?
                 if (client.uid != -1 || user.online) {
-                    response["type"] = "Login";
-                    response["code"] = 1; // Already logged in
-                    send_json_to_client(client, response);
-                    return;
+                    return 1;
                 }
                 client.uid = &user - &users[0];
                 user.online = true;
                 user.client = &client;
-                response["type"] = "Login";
-                response["code"] = 0;  // Success
-                send_json_to_client(client, response);
-                return;
+                return 0; // Success
             }
-            response["type"] = "Login";
-            response["code"] = 2; // Incorrect password
-            send_json_to_client(client, response);
-            return;
+            return 2; // Incorrect password
         }
     }
-    response["type"] = "Login";
-    response["code"] = 3; // Username not found
+    return 3; // Username not found
+}
+
+void handle_Login(Client &client, json &request){
+    int code = login_response_code(client, request);
+    json response = create_login_response(code);
     send_json_to_client(client, response);
 }
 
@@ -159,11 +134,12 @@ void handle_direct_connect(Client &client, json &request){
     for (auto &receiving_user : users) {
         if (receiving_user.username == recipient && receiving_user.online) {
             // Prepare message for the receiving user
-            json message_json;
-            message_json["type"]     = "DirectConnectRequest";
-            message_json["username"] = users[client.uid].username;
-            message_json["IP"]       = request["IP"];
-            message_json["port"]     = request["port"];
+            json message_json = create_direct_connect_request_to_peer(
+                users[client.uid].username,
+                request["IP"],
+                request["port"],
+                request["passcode"]
+            );
 
             cerr << "[DEBUG] Locking socket_mutex for receiving_user: " 
                  << receiving_user.username << " at line " << __LINE__ << endl;
@@ -191,28 +167,20 @@ void handle_direct_connect(Client &client, json &request){
 
             // If the receiving user refused or returned an error
             if (recipient_response["code"] != 0) {
-                json response;
-                response["type"] = "DirectConnect";
-                response["code"] = recipient_response["code"];
+                json response = create_direct_connect_response_to_client(recipient_response["code"]);
                 send_json_to_client(client, response);
                 return;
             }
 
             // otherwise success
-            json response;
-            response["type"] = "DirectConnect";
-            response["code"] = 0;
-            response["IP"]   = recipient_response["IP"];
-            response["port"] = recipient_response["port"];
-            send_json_to_client(client, response);
+            json response_to_client = create_direct_connect_response_to_client(0);
+            send_json_to_client(client, response_to_client);
             return;
         }
     }
     // If we get here, recipient not found or not online
-    json response;
-    response["type"] = "DirectConnect";
-    response["code"] = 7; // Recipient not found
-    send_json_to_client(client, response);
+    json response_to_client = create_direct_connect_response_to_client(7);
+    send_json_to_client(client, response_to_client);
 }
 
 void handle_client_message(Client &client) {
@@ -221,93 +189,77 @@ void handle_client_message(Client &client) {
 
     if (request["type"] == "Login") {
         handle_Login(client, request);
+        return;
     }
     else if (request["type"] == "Logout") {
         client_logout(client);
-        json response;
-        response["type"] = "Logout";
-        response["code"] = 0; // success
+        json response = create_logout_response(0);
         send_json_to_client(client, response);
+        return;
     }
     else if (request["type"] == "Register") {
         string username = request["username"];
         string password = request["password"];
         for (auto &user : users) {
             if (user.username == username) {
-                json response;
-                response["type"] = "Register";
-                response["code"] = 4; // Username already exists
+                json response = create_register_response(4); // username already exists
                 send_json_to_client(client, response);
                 return;
             }
         }
         // register
         users.push_back({username, password, false, nullptr});
-        json response;
-        response["type"] = "Register";
-        response["code"] = 0; // success
+        json response = create_register_response(0); // success
         send_json_to_client(client, response);
+        return;
     }
     else if (request["type"] == "OnlineUsers") {
-        json response;
-        response["type"] = "OnlineUsers";
-        response["code"] = 0;
         vector<string> online_users;
         for (auto &user : users) {
             if (user.online) {
                 online_users.push_back(user.username);
             }
         }
-        response["users"] = online_users;
+        json response = create_online_users_response(0, online_users);
         send_json_to_client(client, response);
+        return;
     }
     else if (request["type"] == "SendMessage") {
         if (client.uid == -1) {
-            json response;
-            response["type"] = "SendMessage";
-            response["code"] = 6; // not logged in
+            json response = create_send_message_response(6); // not logged in
             send_json_to_client(client, response);
             return;
         }
         string recipient = request["username"];
         string message   = request["message"];
+        int code=7;
         for (auto &user : users) {
             if (user.username == recipient && user.online) {
-                json message_json;
-                message_json["type"]    = "NewMessage";
-                message_json["from"]    = users[client.uid].username;
-                message_json["message"] = message;
+                json message_json = create_new_message(users[client.uid].username, message);
                 if (!send_json_to_client(*(user.client), message_json)) {
                     break;
                 }
-                json response;
-                response["type"] = "SendMessage";
-                response["code"] = 0;  // success
-                send_json_to_client(client, response);
-                return;
+                code=0;
             }
         }
-        json response;
-        response["type"] = "SendMessage";
-        response["code"] = 7;  // recipient not found
+        json response = create_send_message_response(code);
         send_json_to_client(client, response);
+        return;
     }
     else if (request["type"] == "DirectConnect") {
         if (client.uid == -1) {
-            json response;
-            response["type"] = "DirectConnect";
-            response["code"] = 6;  // not logged in
+            json response = create_direct_connect_response_to_client(6); // not logged in
             send_json_to_client(client, response);
             return;
         }
         handle_direct_connect(client, request);
+        return;
     }
     else {
         // invalid command
-        json response;
-        response["type"] = "INVALID";
-        response["code"] = 5;
+        json response = create_invalid_response();
         send_json_to_client(client, response);
+        return;
     }
 }
 

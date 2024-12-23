@@ -56,6 +56,7 @@ inline ssize_t writen(int fd, const void *vptr, size_t n) {
 inline bool send_json(int socket_fd, const nlohmann::json& message) {
     // Serialize JSON to string
     std::string message_str = message.dump(); // or message.dump(4) if you prefer pretty print
+    std::cerr<<"sending\n"<<message_str<<"\n";
     uint32_t msg_length = static_cast<uint32_t>(message_str.size());
 
     // Convert message length to network byte order
@@ -96,20 +97,20 @@ inline nlohmann::json get_json(int socket_fd, bool non_blocking = false) {
     // 1) Configure the socket to blocking or non-blocking as requested
     int flags = fcntl(socket_fd, F_GETFL, 0);
     if (flags < 0) {
-        std::cerr << "[recv_json] fcntl(F_GETFL) failed.\n";
+        std::cerr << "[get_json] fcntl(F_GETFL) failed.\n";
         return {};
     }
 
     if (non_blocking) {
         // Enable non-blocking mode
         if (fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-            std::cerr << "[recv_json] fcntl(F_SETFL, O_NONBLOCK) failed.\n";
+            std::cerr << "[get_json] fcntl(F_SETFL, O_NONBLOCK) failed.\n";
             return {};
         }
     } else {
         // Disable non-blocking mode
         if (fcntl(socket_fd, F_SETFL, flags & ~O_NONBLOCK) < 0) {
-            std::cerr << "[recv_json] fcntl(F_SETFL, ~O_NONBLOCK) failed.\n";
+            std::cerr << "[get_json] fcntl(F_SETFL, ~O_NONBLOCK) failed.\n";
             return {};
         }
     }
@@ -127,7 +128,7 @@ inline nlohmann::json get_json(int socket_fd, bool non_blocking = false) {
                 return {};
             }
             // Another error
-            std::cerr << "[recv_json] MSG_PEEK error, errno=" << errno << "\n";
+            std::cerr << "[get_json] MSG_PEEK error, errno=" << errno << "\n";
             return {};
         } else if (peeked < static_cast<ssize_t>(sizeof(length_net))) {
             // Not enough bytes to even read the length
@@ -156,7 +157,7 @@ inline nlohmann::json get_json(int socket_fd, bool non_blocking = false) {
 
         // Read length (4 bytes)
         if (readn(socket_fd, &length_net, sizeof(length_net)) != sizeof(length_net)) {
-            std::cerr << "[recv_json] Error reading length.\n";
+            std::cerr << "[get_json] Error reading length.\n";
             return {};
         }
         length_host = ntohl(length_net);
@@ -164,7 +165,7 @@ inline nlohmann::json get_json(int socket_fd, bool non_blocking = false) {
         // Now read the JSON payload
         std::vector<char> buffer(length_host);
         if (readn(socket_fd, buffer.data(), length_host) != static_cast<ssize_t>(length_host)) {
-            std::cerr << "[recv_json] Error reading JSON payload.\n";
+            std::cerr << "[get_json] Error reading JSON payload.\n";
             return {};
         }
 
@@ -172,7 +173,7 @@ inline nlohmann::json get_json(int socket_fd, bool non_blocking = false) {
         try {
             return nlohmann::json::parse(buffer.begin(), buffer.end());
         } catch (const nlohmann::json::parse_error &e) {
-            std::cerr << "[recv_json] JSON parse error: " << e.what() << "\n";
+            std::cerr << "[get_json] JSON parse error: " << e.what() << "\n";
             return {};
         }
 
@@ -183,7 +184,7 @@ inline nlohmann::json get_json(int socket_fd, bool non_blocking = false) {
         uint32_t length_net;
         if (readn(socket_fd, &length_net, sizeof(length_net)) != sizeof(length_net)) {
             // Could be EOF or error
-            std::cerr << "[recv_json] Blocking read length failed.\n";
+            std::cerr << "[get_json] Blocking read length failed.\n";
             return {};
         }
         uint32_t length_host = ntohl(length_net);
@@ -194,14 +195,15 @@ inline nlohmann::json get_json(int socket_fd, bool non_blocking = false) {
 
         std::vector<char> buffer(length_host);
         if (readn(socket_fd, buffer.data(), length_host) != static_cast<ssize_t>(length_host)) {
-            std::cerr << "[recv_json] Blocking read payload failed.\n";
+            std::cerr << "[get_json] Blocking read payload failed.\n";
             return {};
         }
 
         try {
+            std::cout<<"received:\n"<<std::string(buffer.begin(), buffer.end())<<"\n";
             return nlohmann::json::parse(buffer.begin(), buffer.end());
         } catch (const nlohmann::json::parse_error &e) {
-            std::cerr << "[recv_json] JSON parse error: " << e.what() << "\n";
+            std::cerr << "[get_json] JSON parse error: " << e.what() << "\n";
             return {};
         }
     }
