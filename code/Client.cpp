@@ -61,7 +61,7 @@ void print_all_commands(){
     cout<<"3: See Online Users\n";
     if(logged_in){
         cout<<"4: Send Message\n";
-        cout<<"5: Allow Direct Messages\n";
+        cout<<"5: Send Direct Messages\n";
     }
     cout<<"0: Exit\n";
 }
@@ -209,7 +209,7 @@ void send_direct_message() {//handler TODO
     cin >> recipient;
     
     if(!connected_users.count(recipient) || connected_users[recipient].socket == -1){
-        json message = construct_message("DirectConnect", recipient, "", "");
+        json message = {{ "type", "DirectConnect" }, { "username", recipient }};
         string passcode = message["passcode"] = to_string(rand()); // some random string
         message["IP"] = "127.0.0.1";
         auto [listening_sock, listening_port] = create_listening_socket();

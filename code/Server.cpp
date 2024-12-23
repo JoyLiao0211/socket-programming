@@ -25,6 +25,13 @@ struct User {
 };
 
 vector<User> users;
+
+#ifdef DEBUG
+void init_debug_users(){
+    users = {{"j", "j", 0}, {"o", "o", 0}, {"y", "y", 0}};
+}
+#endif
+
 queue<Client> client_queue;
 vector<pthread_t> worker_threads;
 const int NUM_WORKERS = 4;
@@ -251,6 +258,9 @@ void* worker_function(void* arg) {
 }
 
 int main() {
+    #ifdef DEBUG
+    init_debug_users();
+    #endif
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         cerr << "Socket creation error!\n";
