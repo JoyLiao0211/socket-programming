@@ -16,7 +16,9 @@ struct Client {
     string message = "";
     int socket;
     pthread_mutex_t socket_mutex;
+    #ifdef DEBUG
     int locking_line;//line number of the last lock
+    #endif
 
     Client(int _socket) : socket(_socket) {
         pthread_mutex_init(&socket_mutex, nullptr);
@@ -75,23 +77,31 @@ void client_disconnect(Client &client) {
 
 bool send_json_to_client(Client &client, const json &message, bool locked=false) {
     if (!locked) {
+        #ifdef DEBUG
         auto user_name = getClientName(client);
         cerr << "[DEBUG] Locking socket_mutex for user: " << user_name
              << " at line " << __LINE__ << endl;
+        #endif
         pthread_mutex_lock(&client.socket_mutex);
+        #ifdef DEBUG
         cerr << "[DEBUG] Locked socket_mutex for user: " << user_name
              << " at line " << __LINE__ << endl;
+        #endif
     }
 
     bool status = send_json(client.socket, message);
 
     if (!locked) {
+        #ifdef DEBUG
         auto user_name = getClientName(client);
         cerr << "[DEBUG] Unlocking socket_mutex for user: " << user_name
              << " at line " << __LINE__ << endl;
+        #endif
         pthread_mutex_unlock(&client.socket_mutex);
+        #ifdef DEBUG
         cerr << "[DEBUG] Unlocked socket_mutex for user: " << user_name
              << " at line " << __LINE__ << endl;
+        #endif
     }
 
     if (!status) {
@@ -141,29 +151,41 @@ void handle_direct_connect(Client &client, json &request){
                 request["passcode"]
             );
 
+            #ifdef DEBUG
             cerr << "[DEBUG] Locking socket_mutex for receiving_user: " 
                  << receiving_user.username << " at line " << __LINE__ << endl;
+            #endif
             pthread_mutex_lock(&receiving_user.client->socket_mutex);
+            #ifdef DEBUG
             cerr << "[DEBUG] Locked socket_mutex for receiving_user: "
                  << receiving_user.username << " at line " << __LINE__ << endl;
+            #endif
 
             if (!send_json_to_client(*(receiving_user.client), message_json, true)) {
+                #ifdef DEBUG
                 cerr << "[DEBUG] Unlocking socket_mutex for receiving_user: "
                      << receiving_user.username << " at line " << __LINE__ << endl;
+                #endif
                 pthread_mutex_unlock(&receiving_user.client->socket_mutex);
+                #ifdef DEBUG
                 cerr << "[DEBUG] Unlocked socket_mutex for receiving_user: "
                      << receiving_user.username << " at line " << __LINE__ << endl;
+                #endif
                 break;
             }
 
             // get_json uses read internally
             json recipient_response = get_json(receiving_user.client->socket);
 
+            #ifdef DEBUG
             cerr << "[DEBUG] Unlocking socket_mutex for receiving_user: "
                  << receiving_user.username << " at line " << __LINE__ << endl;
+            #endif
             pthread_mutex_unlock(&receiving_user.client->socket_mutex);
+            #ifdef DEBUG
             cerr << "[DEBUG] Unlocked socket_mutex for receiving_user: "
                  << receiving_user.username << " at line " << __LINE__ << endl;
+            #endif
 
             // If the receiving user refused or returned an error
             if (recipient_response["code"] != 0) {
@@ -278,27 +300,34 @@ void* worker_function(void* arg) {
 
         // -- LOCK (with debug) --
         {
+            #ifdef DEBUG
             auto user_name = getClientName(*client);
             cerr << "[DEBUG] Attempting lock for user: " << user_name
                  << " at line " << __LINE__
                  << ". Last locker line was " << client->locking_line << endl;
-
+            #endif
             pthread_mutex_lock(&client->socket_mutex);
+            #ifdef DEBUG
             client->locking_line = __LINE__;  // we locked
             cerr << "[DEBUG] Locked socket_mutex for user: " << user_name
                  << " at line " << __LINE__ << endl;
+            #endif
         }
 
         // Read the message from the client
         json request=get_json(client->socket, 1);//non-blockingly read the whole json
         // -- UNLOCK (with debug) --
         {
+            #ifdef DEBUG
             auto user_name = getClientName(*client);
             cerr << "[DEBUG] Unlocking socket_mutex for user: " << user_name
                     << " at line " << __LINE__ << endl;
+            #endif
             pthread_mutex_unlock(&client->socket_mutex);
+            #ifdef DEBUG
             cerr << "[DEBUG] Unlocked socket_mutex for user: " << user_name
                     << " at line " << __LINE__ << endl;
+            #endif
         }
 
         if(!request.empty()){
@@ -378,3 +407,9 @@ int main() {
 void print_json_dump(const string &json_dump) {
     cout << "Received JSON: " << json_dump << endl;
 }
+#ifdef DEBUG
+// Keep stderr as it is when DEBUG is defined
+#else
+#undef cerr
+#define cerr 0 && std::cerr
+#endif
