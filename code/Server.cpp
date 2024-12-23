@@ -14,8 +14,13 @@ struct Client {
     int uid = -1;
     string message = "";
     int socket;
+    pthread_mutex_t socket_mutex;
+    int locking_line;//line number of the last lock
 
-    Client(int _socket) : socket(_socket) {}
+    Client(int _socket) : socket(_socket) {
+        pthread_mutex_init(&socket_mutex, nullptr);
+    }
+    // ~Client() { pthread_mutex_destroy(&socket_mutex); }
 };
 
 struct User {
@@ -28,17 +33,32 @@ vector<User> users;
 
 #ifdef DEBUG
 void init_debug_users(){
-    users = {{"j", "j", 0}, {"o", "o", 0}, {"y", "y", 0}};
+    users = {
+        {"j", "j", false, nullptr},
+        {"o", "o", false, nullptr},
+        {"y", "y", false, nullptr}
+    };
 }
 #endif
 
-queue<Client> client_queue;
+// A helper function to get the username for debug printing
+static inline string getClientName(const Client &client) {
+    // If the client has a valid uid, return that user's username; otherwise, "unknown"
+    if (client.uid >= 0 && client.uid < (int)users.size()) {
+        return users[client.uid].username;
+    }
+    return "unknown";
+}
+
+// A global queue of pointers to Clients
+queue<Client*> client_queue;
 vector<pthread_t> worker_threads;
 const int NUM_WORKERS = 4;
 
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t  queue_cond  = PTHREAD_COND_INITIALIZER;
 
+// ----------------------- Utility Functions ------------------------
 void client_logout(Client &client) {
     if (client.uid != -1) {
         users[client.uid].online = false;
@@ -49,9 +69,58 @@ void client_logout(Client &client) {
 
 void client_disconnect(Client &client) {
     client_logout(client);
+
+    // // ----- LOCK (with debug) -----
+    // {
+    //     auto user_name = getClientName(client);
+    //     cerr << "[DEBUG] Locking socket_mutex for user: " << user_name
+    //          << " at line " << __LINE__ << endl;
+    //     pthread_mutex_lock(&client.socket_mutex);
+    //     cerr << "[DEBUG] Locked socket_mutex for user: " << user_name
+    //          << " at line " << __LINE__ << endl;
+    // }
     close(client.socket);
+
+    // // ----- UNLOCK (with debug) -----
+    // {
+    //     auto user_name = getClientName(client);
+    //     cerr << "[DEBUG] Unlocking socket_mutex for user: " << user_name
+    //          << " at line " << __LINE__ << endl;
+    //     pthread_mutex_unlock(&client.socket_mutex);
+    //     cerr << "[DEBUG] Unlocked socket_mutex for user: " << user_name
+    //          << " at line " << __LINE__ << endl;
+    // }
 }
 
+bool send_json_to_client(Client &client, const json &message, bool locked=false) {
+    if (!locked) {
+        auto user_name = getClientName(client);
+        cerr << "[DEBUG] Locking socket_mutex for user: " << user_name
+             << " at line " << __LINE__ << endl;
+        pthread_mutex_lock(&client.socket_mutex);
+        cerr << "[DEBUG] Locked socket_mutex for user: " << user_name
+             << " at line " << __LINE__ << endl;
+    }
+
+    bool status = send_json(client.socket, message);
+
+    if (!locked) {
+        auto user_name = getClientName(client);
+        cerr << "[DEBUG] Unlocking socket_mutex for user: " << user_name
+             << " at line " << __LINE__ << endl;
+        pthread_mutex_unlock(&client.socket_mutex);
+        cerr << "[DEBUG] Unlocked socket_mutex for user: " << user_name
+             << " at line " << __LINE__ << endl;
+    }
+
+    if (!status) {
+        client_disconnect(client);
+        return false;
+    }
+    return true;
+}
+
+// ----------------------- Request Handlers ------------------------
 void handle_Login(Client &client, json &request){
     json response;
     string username = request["username"];
@@ -59,10 +128,11 @@ void handle_Login(Client &client, json &request){
     for (auto &user : users) {
         if (user.username == username) {
             if (user.password == password) {
-                if (client.uid != -1) {
+                // Already logged in?
+                if (client.uid != -1 || user.online) {
                     response["type"] = "Login";
-                    response["code"] = 1;  // Already logged in
-                    send_json(client.socket, response);
+                    response["code"] = 1; // Already logged in
+                    send_json_to_client(client, response);
                     return;
                 }
                 client.uid = &user - &users[0];
@@ -70,61 +140,79 @@ void handle_Login(Client &client, json &request){
                 user.client = &client;
                 response["type"] = "Login";
                 response["code"] = 0;  // Success
-                send_json(client.socket, response);
+                send_json_to_client(client, response);
                 return;
             }
             response["type"] = "Login";
-            response["code"] = 2;  // Incorrect password
-            send_json(client.socket, response);
+            response["code"] = 2; // Incorrect password
+            send_json_to_client(client, response);
             return;
         }
     }
     response["type"] = "Login";
-    response["code"] = 3;  // Username not found
-    send_json(client.socket, response);
+    response["code"] = 3; // Username not found
+    send_json_to_client(client, response);
 }
 
 void handle_direct_connect(Client &client, json &request){
     string recipient = request["username"];
-    for (const auto &user : users) {
-        if (user.username == recipient && user.online) {
-            // send message to recipient
+    for (auto &receiving_user : users) {
+        if (receiving_user.username == recipient && receiving_user.online) {
+            // Prepare message for the receiving user
             json message_json;
-            message_json["type"] = "DirectConnect";
-            message_json["from"] = users[client.uid].username;
-            if(!send_json(user.client->socket, message_json)){
+            message_json["type"]     = "DirectConnectRequest";
+            message_json["username"] = users[client.uid].username;
+            message_json["IP"]       = request["IP"];
+            message_json["port"]     = request["port"];
+
+            cerr << "[DEBUG] Locking socket_mutex for receiving_user: " 
+                 << receiving_user.username << " at line " << __LINE__ << endl;
+            pthread_mutex_lock(&receiving_user.client->socket_mutex);
+            cerr << "[DEBUG] Locked socket_mutex for receiving_user: "
+                 << receiving_user.username << " at line " << __LINE__ << endl;
+
+            if (!send_json_to_client(*(receiving_user.client), message_json, true)) {
+                cerr << "[DEBUG] Unlocking socket_mutex for receiving_user: "
+                     << receiving_user.username << " at line " << __LINE__ << endl;
+                pthread_mutex_unlock(&receiving_user.client->socket_mutex);
+                cerr << "[DEBUG] Unlocked socket_mutex for receiving_user: "
+                     << receiving_user.username << " at line " << __LINE__ << endl;
                 break;
             }
-            json recipient_response = get_json(user.client->socket);
-            if(recipient_response["code"] != 0){
+
+            // get_json uses read internally
+            json recipient_response = get_json(receiving_user.client->socket);
+
+            cerr << "[DEBUG] Unlocking socket_mutex for receiving_user: "
+                 << receiving_user.username << " at line " << __LINE__ << endl;
+            pthread_mutex_unlock(&receiving_user.client->socket_mutex);
+            cerr << "[DEBUG] Unlocked socket_mutex for receiving_user: "
+                 << receiving_user.username << " at line " << __LINE__ << endl;
+
+            // If the receiving user refused or returned an error
+            if (recipient_response["code"] != 0) {
                 json response;
                 response["type"] = "DirectConnect";
                 response["code"] = recipient_response["code"];
-                send_json(client.socket, response);
+                send_json_to_client(client, response);
                 return;
             }
+
+            // otherwise success
             json response;
-            response["type"] = "SendMessage";
-            response["code"] = 0;  // Success
-            response["IP"] = recipient_response["IP"];
+            response["type"] = "DirectConnect";
+            response["code"] = 0;
+            response["IP"]   = recipient_response["IP"];
             response["port"] = recipient_response["port"];
-            send_json(client.socket, response);
+            send_json_to_client(client, response);
             return;
         }
     }
+    // If we get here, recipient not found or not online
     json response;
-    response["type"] = "SendMessage";
-    response["code"] = 7;  // Recipient not found
-    send_json(client.socket, response);
-    return;
-}
-
-bool send_json_to_client(Client &client, const json &message) {
-    if(!send_json(client.socket, message)){
-        client_disconnect(client);
-        return 0;
-    }
-    return 1;
+    response["type"] = "DirectConnect";
+    response["code"] = 7; // Recipient not found
+    send_json_to_client(client, response);
 }
 
 void handle_client_message(Client &client) {
@@ -133,134 +221,158 @@ void handle_client_message(Client &client) {
 
     if (request["type"] == "Login") {
         handle_Login(client, request);
-        return;
-    } else if(request["type"] == "Logout") {
+    }
+    else if (request["type"] == "Logout") {
         client_logout(client);
         json response;
         response["type"] = "Logout";
-        response["code"] = 0;  // Success
+        response["code"] = 0; // success
         send_json_to_client(client, response);
-        return;
     }
     else if (request["type"] == "Register") {
         string username = request["username"];
         string password = request["password"];
-        for (const auto &user : users) {
+        for (auto &user : users) {
             if (user.username == username) {
                 json response;
                 response["type"] = "Register";
-                response["code"] = 4;  // Username already exists
+                response["code"] = 4; // Username already exists
                 send_json_to_client(client, response);
                 return;
             }
         }
-        users.push_back({username, password, 0});
+        // register
+        users.push_back({username, password, false, nullptr});
         json response;
         response["type"] = "Register";
-        response["code"] = 0;  // Registration success
+        response["code"] = 0; // success
         send_json_to_client(client, response);
-        return;
-    } else if (request["type"] == "OnlineUsers") {
+    }
+    else if (request["type"] == "OnlineUsers") {
         json response;
         response["type"] = "OnlineUsers";
         response["code"] = 0;
         vector<string> online_users;
-        for (const auto &user : users) if(user.online) {
-            online_users.push_back(user.username);
+        for (auto &user : users) {
+            if (user.online) {
+                online_users.push_back(user.username);
+            }
         }
         response["users"] = online_users;
         send_json_to_client(client, response);
-        return;
-    } else if (request["type"] == "SendMessage") {
+    }
+    else if (request["type"] == "SendMessage") {
         if (client.uid == -1) {
             json response;
             response["type"] = "SendMessage";
-            response["code"] = 6;  // Not logged in
+            response["code"] = 6; // not logged in
             send_json_to_client(client, response);
             return;
         }
         string recipient = request["username"];
-        string message = request["message"];
-        for (const auto &user : users) {
+        string message   = request["message"];
+        for (auto &user : users) {
             if (user.username == recipient && user.online) {
-                // send message to recipient
                 json message_json;
-                message_json["type"] = "NewMessage";
-                message_json["from"] = users[client.uid].username;
+                message_json["type"]    = "NewMessage";
+                message_json["from"]    = users[client.uid].username;
                 message_json["message"] = message;
-                if(!send_json_to_client(*(user.client), message_json)){
+                if (!send_json_to_client(*(user.client), message_json)) {
                     break;
                 }
                 json response;
                 response["type"] = "SendMessage";
-                response["code"] = 0;  // Success
+                response["code"] = 0;  // success
                 send_json_to_client(client, response);
                 return;
             }
         }
         json response;
         response["type"] = "SendMessage";
-        response["code"] = 7;  // Recipient not found
+        response["code"] = 7;  // recipient not found
         send_json_to_client(client, response);
-        return;
     }
-    else if (request["type"] == "DirectConnect") {//TODO
+    else if (request["type"] == "DirectConnect") {
         if (client.uid == -1) {
             json response;
             response["type"] = "DirectConnect";
-            response["code"] = 6;  // Not logged in
+            response["code"] = 6;  // not logged in
             send_json_to_client(client, response);
             return;
         }
         handle_direct_connect(client, request);
-        return;
     }
-
-    json response;
-    response["type"] = "INVALID";
-    response["code"] = 5;  // Invalid command
-    send_json(client.socket, response);
-    return;
+    else {
+        // invalid command
+        json response;
+        response["type"] = "INVALID";
+        response["code"] = 5;
+        send_json_to_client(client, response);
+    }
 }
 
-
-
-
-
+// ----------------------- The Worker Function ------------------------
 void* worker_function(void* arg) {
     while (true) {
+        // Wait until there's a client in the queue
         pthread_mutex_lock(&queue_mutex);
         while (client_queue.empty()) {
             pthread_cond_wait(&queue_cond, &queue_mutex);
         }
-        Client client = client_queue.front();
+        // Pop a pointer from the queue
+        Client* client = client_queue.front();
         client_queue.pop();
         pthread_mutex_unlock(&queue_mutex);
 
-        uint32_t msg_length_net;
-        if (readn(client.socket, &msg_length_net, sizeof(msg_length_net)) <= 0) {
-            client_disconnect(client);
-            continue;
+        // -- LOCK (with debug) --
+        {
+            auto user_name = getClientName(*client);
+            cerr << "[DEBUG] Attempting lock for user: " << user_name
+                 << " at line " << __LINE__
+                 << ". Last locker line was " << client->locking_line << endl;
+
+            pthread_mutex_lock(&client->socket_mutex);
+            client->locking_line = __LINE__;  // we locked
+            cerr << "[DEBUG] Locked socket_mutex for user: " << user_name
+                 << " at line " << __LINE__ << endl;
         }
 
-        uint32_t msg_length = ntohl(msg_length_net);
-        vector<char> buffer(msg_length);
-        if (readn(client.socket, buffer.data(), msg_length) <= 0) {
-            client_disconnect(client);
-            continue;
+        // Read the message from the client
+        json request=get_json(client->socket, 1);//non-blockingly read the whole json
+        // -- UNLOCK (with debug) --
+        {
+            auto user_name = getClientName(*client);
+            cerr << "[DEBUG] Unlocking socket_mutex for user: " << user_name
+                    << " at line " << __LINE__ << endl;
+            pthread_mutex_unlock(&client->socket_mutex);
+            cerr << "[DEBUG] Unlocked socket_mutex for user: " << user_name
+                    << " at line " << __LINE__ << endl;
         }
 
-        client.message = string(buffer.begin(), buffer.end());
-        handle_client_message(client);
+        if(!request.empty()){
+            client->message = request.dump();
+
+            // Now handle the message
+            handle_client_message(*client);
+        }
+
+
+        // Re-queue the same client for next read
+        pthread_mutex_lock(&queue_mutex);
         client_queue.push(client);
+        pthread_mutex_unlock(&queue_mutex);
+        pthread_cond_signal(&queue_cond);
     }
     return nullptr;
 }
 
+
+// ----------------------- main() ------------------------
 int main() {
-    #ifdef DEBUG
+#ifdef DEBUG
     init_debug_users();
-    #endif
+#endif
+
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         cerr << "Socket creation error!\n";
@@ -268,9 +380,9 @@ int main() {
     }
 
     sockaddr_in address = {0};
-    address.sin_family = AF_INET;
+    address.sin_family      = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(8080);
+    address.sin_port        = htons(8080);
 
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
         cerr << "Bind failed!\n";
@@ -289,10 +401,15 @@ int main() {
 
     while (true) {
         int new_socket = accept(server_fd, nullptr, nullptr);
-        if (new_socket < 0) continue;
+        if (new_socket < 0) {
+            cerr << "Accept failed!\n";
+            continue;
+        }
+
+        Client* new_client = new Client(new_socket);
 
         pthread_mutex_lock(&queue_mutex);
-        client_queue.emplace(new_socket);
+        client_queue.push(new_client);
         pthread_mutex_unlock(&queue_mutex);
         pthread_cond_signal(&queue_cond);
     }
@@ -303,8 +420,9 @@ int main() {
     close(server_fd);
     return 0;
 }
-#include <iostream>
 
+// ----------------------- Optional Debug Helper ------------------------
+#include <iostream>
 void print_json_dump(const string &json_dump) {
     cout << "Received JSON: " << json_dump << endl;
 }

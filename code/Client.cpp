@@ -14,6 +14,7 @@ using json = nlohmann::json;
 queue<json> message_queue;
 int server_socket;
 bool logged_in = false;
+string self_username;
 
 struct connected_user{
     string name;
@@ -75,6 +76,31 @@ json construct_message(const string& type, const string& username, const string&
     return message;
 }
 
+void direct_connect_thread_function(string other) {
+    int sock = connected_users[other].socket;
+    queue<json> &q = connected_users[other].message;
+    while (true) {
+        uint32_t msg_length_net;
+        if (readn(sock, &msg_length_net, sizeof(msg_length_net)) <= 0) {
+            cerr << "Connection closed by " << other << ".\n";
+            close(sock);
+            connected_users.erase(other);
+            return;
+        }
+        uint32_t msg_length = ntohl(msg_length_net);
+        vector<char> buffer(msg_length);
+        if (readn(sock, buffer.data(), msg_length) <= 0) {
+            cerr << "Connection closed by " << other << ".\n";
+            close(sock);
+            connected_users.erase(other);
+            return;
+        }
+        string message_string = string(buffer.begin(), buffer.end());
+        json message = json::parse(message_string);
+        q.push(message);
+    }
+}
+
 void receive_response_thread() {
     while (true) {
         uint32_t resp_length_net;
@@ -96,37 +122,48 @@ void receive_response_thread() {
             cout << (string)response["message"]<< "\n";
             cout << "==========\n";
         }
-        else if(response["type"] == "DirectConnect"){
+        else if(response["type"] == "DirectConnectRequest"){
+            cout<<"receive direct connect request\n";
+            cout<<response.dump(4)<<"\n";
             string username = response["username"];
-            cout<<"User "<<username<<" wants to connect directly\n";
-            cout<<"Do you want to accept the connection? (y/n): ";
-            char choice;
-            cin>>choice;
+            // cout<<"User "<<username<<" wants to connect directly\n";
+            // cout<<"Do you want to accept the connection? (y/n): ";
+            string choice = "y";
             json response;
-            response["type"] = "DirectConnect";
-            if(choice == 'y'){
-                response["code"] = 0;
-                json connect_to_peer;
-                connect_to_peer["type"] = "DirectConnect";
-                connect_to_peer["passcode"] = response["passcode"];
-                string ip = response["IP"].get<string>();
-                int port = response["port"].get<int>();
-                // connect to ip & port
-                int sock = create_socket();
-                connected_users[username].socket = sock;
-                connected_users[username].name = username;
-                if(!connect_to_addr(sock, ip, port)){
-                    response["code"] = 9;
-                }else{
-
+            response["type"] = "DirectConnectRequest";
+            while(1){
+                // cin>>choice;
+                if(choice == "y"){
+                    response["code"] = 0;
+                    json connect_to_peer;
+                    connect_to_peer["type"] = "DirectConnectRequest";
+                    connect_to_peer["passcode"] = response["passcode"];
+                    string ip = response["IP"].get<string>();
+                    int port = response["port"].get<int>();
+                    // connect to ip & port
+                    int sock = create_socket();
+                    connected_users[username].socket = sock;
+                    connected_users[username].name = username;
+                    if(!connect_to_addr(sock, ip, port)){
+                        response["code"] = 9;
+                    }else{//send connect_to_peer to peer with passcode
+                        if(!send_json(sock, connect_to_peer)){
+                            response["code"] = 9;
+                            break;
+                        }
+                        //start thread to receive messages from peer
+                        thread direct_thread(direct_connect_thread_function, username);
+                        direct_thread.detach();
+                    }
                 }
+                else if(choice == "n"){
+                    cout<<"reject connection\n";
+                    response["code"] = 8;
+                }
+                else continue;
+                break;
             }
-            else{
-                response["code"] = 8;
-            }
-
-
-            
+            cout<<"response to server: "<<response.dump(4)<<"\n";
             send_json(server_socket, response);
         }
         else {
@@ -178,30 +215,7 @@ pair<int,int> create_listening_socket(){//return socket_fd, port_num
     return {direct_sock, port};
 }
 
-void direct_connect_thread_function(string other) {
-    int sock = connected_users[other].socket;
-    queue<json> &q = connected_users[other].message;
-    while (true) {
-        uint32_t msg_length_net;
-        if (readn(sock, &msg_length_net, sizeof(msg_length_net)) <= 0) {
-            cerr << "Connection closed by " << other << ".\n";
-            close(sock);
-            connected_users.erase(other);
-            return;
-        }
-        uint32_t msg_length = ntohl(msg_length_net);
-        vector<char> buffer(msg_length);
-        if (readn(sock, buffer.data(), msg_length) <= 0) {
-            cerr << "Connection closed by " << other << ".\n";
-            close(sock);
-            connected_users.erase(other);
-            return;
-        }
-        string message_string = string(buffer.begin(), buffer.end());
-        json message = json::parse(message_string);
-        q.push(message);
-    }
-}
+
 
 void send_direct_message() {//handler TODO
     cout << "Enter the username of the recipient: ";
@@ -223,6 +237,7 @@ void send_direct_message() {//handler TODO
         send_json(server_socket, message);
 
         json res_json = get_response();
+        cout<<"response from server: "<<res_json.dump(4)<<"\n";
         int res_code = res_json["code"].get<int>();
         cout << RESPONSE_MESSAGES[res_code] << endl;
         if(res_code != 0){
@@ -260,6 +275,7 @@ void process_command(const string& cmd) {
             cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
             if (res_json["code"].get<int>() == 0) {
                 logged_in = false;
+                self_username = "";
             }
         } else {//login
             cout << "Username: ";
@@ -272,6 +288,7 @@ void process_command(const string& cmd) {
             cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
             if (res_json["code"].get<int>() == 0) {
                 logged_in = true;
+                self_username = username;
             }
         }
     }
