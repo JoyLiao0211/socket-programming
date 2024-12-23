@@ -4,6 +4,7 @@
 - [ ] send chat message
     - [x] relay mode
     - [ ] direct mode
+        - [ ] Server: create mutex lock for every client socket
 - [ ] Message Encryption with OpenSSL
 - [ ] transfer file with encryption
 - [ ] streaming
