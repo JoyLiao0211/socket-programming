@@ -40,58 +40,121 @@ void client_logout(Client &client) {
     }
 }
 
-json handle_client_message(Client &client) {
-    cout << "Received message: " << client.message << endl;
+void client_disconnect(Client &client) {
+    client_logout(client);
+    close(client.socket);
+}
+
+void handle_Login(Client &client, json &request){
     json response;
+    string username = request["username"];
+    string password = request["password"];
+    for (auto &user : users) {
+        if (user.username == username) {
+            if (user.password == password) {
+                if (client.uid != -1) {
+                    response["type"] = "Login";
+                    response["code"] = 1;  // Already logged in
+                    send_json(client.socket, response);
+                    return;
+                }
+                client.uid = &user - &users[0];
+                user.online = true;
+                user.client = &client;
+                response["type"] = "Login";
+                response["code"] = 0;  // Success
+                send_json(client.socket, response);
+                return;
+            }
+            response["type"] = "Login";
+            response["code"] = 2;  // Incorrect password
+            send_json(client.socket, response);
+            return;
+        }
+    }
+    response["type"] = "Login";
+    response["code"] = 3;  // Username not found
+    send_json(client.socket, response);
+}
+
+void handle_direct_connect(Client &client, json &request){
+    string recipient = request["username"];
+    for (const auto &user : users) {
+        if (user.username == recipient && user.online) {
+            // send message to recipient
+            json message_json;
+            message_json["type"] = "DirectConnect";
+            message_json["from"] = users[client.uid].username;
+            if(!send_json(user.client->socket, message_json)){
+                break;
+            }
+            json recipient_response = get_json(user.client->socket);
+            if(recipient_response["code"] != 0){
+                json response;
+                response["type"] = "DirectConnect";
+                response["code"] = recipient_response["code"];
+                send_json(client.socket, response);
+                return;
+            }
+            json response;
+            response["type"] = "SendMessage";
+            response["code"] = 0;  // Success
+            response["IP"] = recipient_response["IP"];
+            response["port"] = recipient_response["port"];
+            send_json(client.socket, response);
+            return;
+        }
+    }
+    json response;
+    response["type"] = "SendMessage";
+    response["code"] = 7;  // Recipient not found
+    send_json(client.socket, response);
+    return;
+}
+
+bool send_json_to_client(Client &client, const json &message) {
+    if(!send_json(client.socket, message)){
+        client_disconnect(client);
+        return 0;
+    }
+    return 1;
+}
+
+void handle_client_message(Client &client) {
+    cout << "Received message: " << client.message << endl;
     json request = json::parse(client.message);
 
     if (request["type"] == "Login") {
-        string username = request["username"];
-        string password = request["password"];
-        for (auto &user : users) {
-            if (user.username == username) {
-                if (user.password == password) {
-                    if (client.uid != -1) {
-                        response["type"] = "Login";
-                        response["code"] = 1;  // Already logged in
-                        return response;
-                    }
-                    client.uid = &user - &users[0];
-                    user.online = true;
-                    user.client = &client;
-                    response["type"] = "Login";
-                    response["code"] = 0;  // Success
-                    return response;
-                }
-                response["type"] = "Login";
-                response["code"] = 2;  // Incorrect password
-                return response;
-            }
-        }
-        response["type"] = "Login";
-        response["code"] = 3;  // Username not found
-        return response;
+        handle_Login(client, request);
+        return;
     } else if(request["type"] == "Logout") {
         client_logout(client);
+        json response;
         response["type"] = "Logout";
         response["code"] = 0;  // Success
-        return response;
+        send_json_to_client(client, response);
+        return;
     }
     else if (request["type"] == "Register") {
         string username = request["username"];
         string password = request["password"];
         for (const auto &user : users) {
             if (user.username == username) {
+                json response;
                 response["type"] = "Register";
                 response["code"] = 4;  // Username already exists
-                return response;
+                send_json_to_client(client, response);
+                return;
             }
         }
         users.push_back({username, password, 0});
+        json response;
         response["type"] = "Register";
         response["code"] = 0;  // Registration success
-        return response;
+        send_json_to_client(client, response);
+        return;
     } else if (request["type"] == "OnlineUsers") {
+        json response;
         response["type"] = "OnlineUsers";
         response["code"] = 0;
         vector<string> online_users;
@@ -99,12 +162,15 @@ json handle_client_message(Client &client) {
             online_users.push_back(user.username);
         }
         response["users"] = online_users;
-        return response;
+        send_json_to_client(client, response);
+        return;
     } else if (request["type"] == "SendMessage") {
         if (client.uid == -1) {
+            json response;
             response["type"] = "SendMessage";
             response["code"] = 6;  // Not logged in
-            return response;
+            send_json_to_client(client, response);
+            return;
         }
         string recipient = request["username"];
         string message = request["message"];
@@ -115,30 +181,44 @@ json handle_client_message(Client &client) {
                 message_json["type"] = "NewMessage";
                 message_json["from"] = users[client.uid].username;
                 message_json["message"] = message;
-                if(!send_json(user.client->socket, message_json)){
+                if(!send_json_to_client(*(user.client), message_json)){
                     break;
                 }
+                json response;
                 response["type"] = "SendMessage";
                 response["code"] = 0;  // Success
-                return response;
+                send_json_to_client(client, response);
+                return;
             }
         }
+        json response;
         response["type"] = "SendMessage";
         response["code"] = 7;  // Recipient not found
-        return response;
+        send_json_to_client(client, response);
+        return;
+    }
+    else if (request["type"] == "DirectConnect") {//TODO
+        if (client.uid == -1) {
+            json response;
+            response["type"] = "DirectConnect";
+            response["code"] = 6;  // Not logged in
+            send_json_to_client(client, response);
+            return;
+        }
+        handle_direct_connect(client, request);
+        return;
     }
 
+    json response;
     response["type"] = "INVALID";
     response["code"] = 5;  // Invalid command
-    return response;
+    send_json(client.socket, response);
+    return;
 }
 
 
 
-void client_disconnect(Client &client) {
-    client_logout(client);
-    close(client.socket);
-}
+
 
 void* worker_function(void* arg) {
     while (true) {
@@ -164,11 +244,7 @@ void* worker_function(void* arg) {
         }
 
         client.message = string(buffer.begin(), buffer.end());
-        json response = handle_client_message(client);
-        if(!send_json(client.socket, response)){
-            client_disconnect(client);
-            continue;
-        }
+        handle_client_message(client);
         client_queue.push(client);
     }
     return nullptr;

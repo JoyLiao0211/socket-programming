@@ -70,4 +70,28 @@ bool send_json(int socket_fd, const nlohmann::json& message) {
     return true;
 }
 
+nlohmann::json get_json(int socket_fd) {
+    uint32_t msg_length_net;
+    ssize_t bytes_received = readn(socket_fd, &msg_length_net, sizeof(msg_length_net));
+    if (bytes_received != sizeof(msg_length_net)) {
+        std::cerr << "[recv_json] Error receiving message length. Bytes received: " << bytes_received << "\n";
+        return {};
+    }
+
+    // Convert message length to host byte order
+    uint32_t msg_length = ntohl(msg_length_net);
+
+    // Receive the actual JSON message
+    std::vector<char> buffer(msg_length);
+    bytes_received = readn(socket_fd, buffer.data(), msg_length);
+    if (bytes_received != static_cast<ssize_t>(msg_length)) {
+        std::cerr << "[recv_json] Error receiving JSON message. Bytes received: " << bytes_received << "\n";
+        return {};
+    }
+
+    // Parse the received JSON message
+    std::string message_str(buffer.begin(), buffer.end());
+    return nlohmann::json::parse(message_str);
+}
+
 #endif // SOCKET_UTILS_HPP
