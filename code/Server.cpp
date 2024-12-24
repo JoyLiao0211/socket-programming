@@ -297,7 +297,7 @@ int main() {
     initialize_openssl();
 
     SSL_CTX* ctx = create_ssl_server_context();
-    configure_ssl_context(ctx);
+    configure_ssl_context(ctx, "certs/server.crt", "certs/server.key");
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
