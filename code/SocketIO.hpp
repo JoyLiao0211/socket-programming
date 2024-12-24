@@ -90,18 +90,14 @@ nlohmann::json get_json(SSL *ssl, bool non_blocking = false) {
         return {};
     }
 
-    if (non_blocking) {
-        // Enable non-blocking mode
-        if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-            std::cerr << "[get_json] fcntl(F_SETFL, O_NONBLOCK) failed.\n";
+    if (non_blocking) {//peek if any data is in the buffer
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);//is this neccessary? 
+        char c;
+        if (SSL_peek(ssl, &c, 1) <= 0) {
+            fcntl(fd, F_SETFL, flags);
             return {};
         }
-    } else {
-        // Disable non-blocking mode
-        if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0) {
-            std::cerr << "[get_json] fcntl(F_SETFL, ~O_NONBLOCK) failed.\n";
-            return {};
-        }
+        fcntl(fd, F_SETFL, flags);
     }
 
     // 1) Receive the length of the JSON message
