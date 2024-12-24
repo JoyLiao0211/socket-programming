@@ -13,6 +13,11 @@
 - [ ] 5~10 min demo video
 
 - [ ] remove error codes, use 1 for all errors and add error message field
+- [ ] login -> exit, server need to logout that user
+- [ ] a b client, a exit, b read eof
+- [ ] cert stuffs
+    - [ ] arg: where cert
+    - [ ] auto create cert
 
 ## bonus
 
