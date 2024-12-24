@@ -98,6 +98,7 @@ void print_all_commands(){
         cout<<"6: Send File\n";
     }
     cout<<"0: Exit\n";
+    cout.flush();
 }
 
 void handle_receive_file(string other, json message);
