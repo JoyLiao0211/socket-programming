@@ -16,6 +16,9 @@ using json = nlohmann::json;
 #include <vector>
 #include <algorithm>
 
+// #define min(a, b) ((a) < (b) ? (a) : (b))
+// #define max(a, b) ((a) > (b) ? (a) : (b))
+
 // Function to read exactly n bytes from a descriptor
 inline ssize_t readn(SSL * ssl, void *vptr, size_t n) {
     size_t nleft = n;
@@ -67,7 +70,7 @@ bool write_file(SSL *ssl, vector<char> &data) {
     int pos = 0;
     while (msg_length > 0) {
         int send_length = min(CHUNK_SIZE, msg_length);
-        char *ptr = &vec[ptr];
+        char *ptr = &data[pos];
         bytes_sent = writen(ssl, ptr, send_length);
         if (bytes_sent != static_cast<ssize_t>(send_length)) {
             std::cerr << "[send_file] Error sending file. Bytes sent: " << bytes_sent << "\n";
