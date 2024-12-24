@@ -172,9 +172,7 @@ json create_file_transfer_response(int accept) {// 1: accept, 0: reject
     return response;
 }
 
-// 3. File data from client a to b
-
-
+// 3. File data from client a to b: send in chunks
 
 // ----------------------- INVALID ------------------------
 

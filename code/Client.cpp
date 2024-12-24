@@ -100,7 +100,8 @@ void print_all_commands(){
     cout<<"0: Exit\n";
 }
 
-void direct_connect_thread_function(string other) {
+void handle_receive_file(string other, json message);
+void direct_connect_thread_function(string other) {//from peers
     SSL* other_ssl = connected_users[other].ssl;
     queue<json> &q = connected_users[other].message;
     while (true) {
@@ -116,19 +117,31 @@ void direct_connect_thread_function(string other) {
             cout << (string)message["message"]<< "\n";
             cout << "==========\n";
         }
+        else if(message["type"] == "TransferFileRequest"){
+            handle_receive_file(other, message);
+        }
         else{
             q.push(message);
         }
     }
 }
+json get_response_from_peer(string other){
+    auto &message_q = connected_users[other].message;
+    while(message_q.empty()){
+        this_thread::sleep_for(chrono::milliseconds(10));
+    }
+    json response = message_q.front();
+    message_q.pop();
+    return response;
+}
 
-void receive_response_thread() {
+void receive_response_thread() {// response from server
     cerr << "Receive response thread started\n";
     while (true) {
         json response = get_json(server_ssl);
         if(response.empty()){
             cerr<<"Connection closed by server\n";
-            return;
+            exit(0);
         }
         cout << "Received response: " << response.dump(4) << endl;
         if (response["type"] == "NewMessage") {
@@ -342,7 +355,7 @@ void handle_send_file_request() {
     }
     json message = create_file_transfer_request(file_path);
     send_json(connected_users[recipient].ssl, message);
-    json response_from_recipient = get_json(connected_users[recipient].ssl);
+    json response_from_recipient = get_response_from_peer(recipient);
     int accept = response_from_recipient["accept"].get<int>();
     if(accept == 0){
         cout<<"Recipient rejected the file transfer\n";
@@ -359,6 +372,7 @@ void handle_receive_file(string other, json message) {
     string file_name = message["filename"];
     cout << "You got a file transfer request from " << other << "\n";
     cout << "Do you want to accept the file transfer? (y/n): ";
+    cout.flush();
     string choice = get_input();
     if (choice != "y") {
         cout << "File transfer rejected\n";
@@ -374,6 +388,7 @@ void handle_receive_file(string other, json message) {
         return;
     }
     cout << "Enter the path to save the file: ";
+    cout.flush();
     string save_path = get_input();
     try {
         writeVectorToFile(file_data, save_path);
