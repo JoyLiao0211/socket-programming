@@ -81,7 +81,7 @@ bool send_json(SSL *ssl, const nlohmann::json& message) {
 }
 
 
-nlohmann::json get_json(SSL *ssl, bool non_blocking = false) {
+nlohmann::json get_json(SSL *ssl, bool peek_first = false) {
     // Configure the SSL connection to blocking or non-blocking as requested
     int fd = SSL_get_fd(ssl); // Get the file descriptor linked with the SSL pointer
     int flags = fcntl(fd, F_GETFL, 0);
@@ -90,7 +90,7 @@ nlohmann::json get_json(SSL *ssl, bool non_blocking = false) {
         return {};
     }
 
-    if (non_blocking) {//peek if any data is in the buffer
+    if (peek_first) {//peek if any data is in the buffer
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);//is this neccessary? 
         char c;
         if (SSL_peek(ssl, &c, 1) <= 0) {
