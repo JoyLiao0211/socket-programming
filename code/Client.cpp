@@ -16,7 +16,7 @@ using json = nlohmann::json;
 queue<json> message_queue;
 int server_socket;
 SSL *server_ssl;
-SSL_CTX *ctx;//does client need two ctx? server & client
+SSL_CTX *client_ctx, *server_ctx;//does client need two ctx? server & client
 bool logged_in = false;
 string self_username;
 
@@ -149,7 +149,7 @@ void receive_response_thread() {
             int port = response["port"].get<int>();
             // connect to ip & port
             int peer_sock = create_socket(); cerr<<"line: "<<__LINE__<<"\n";
-            SSL* peer_ssl = SSL_new(ctx); cerr<<"line: "<<__LINE__<<"\n";
+            SSL* peer_ssl = SSL_new(client_ctx); cerr<<"line: "<<__LINE__<<"\n";
             if(!connect_to_addr(peer_sock, ip, port, peer_ssl)){ cerr<<"line: "<<__LINE__<<"\n";
                 cout<<"Failed to connect to peer\n";
                 code = 9;
@@ -229,6 +229,14 @@ bool establish_direct_connection(string other){
     json message = create_direct_connect_request_to_server(other, "127.0.0.1", listening_port, passcode);
     if(!send_json(server_ssl, message))return 0;
 
+    int listening_sock = accept(opening_sock, NULL, NULL);
+    close(opening_sock);
+    SSL* listening_ssl = SSL_new(server_ctx);
+    SSL_set_fd(listening_ssl, listening_sock);
+    if(SSL_accept(listening_ssl) <= 0){
+        ERR_print_errors_fp(stderr);
+        return 0;
+    }
     //get response from server first
     json res_json = get_response();
     cout<<"response from server: "<<res_json.dump()<<"\n";
@@ -239,14 +247,7 @@ bool establish_direct_connection(string other){
         return 0;
     }
     //get response from peer
-    int listening_sock = accept(opening_sock, NULL, NULL);
-    close(opening_sock);
-    SSL* listening_ssl = SSL_new(ctx);
-    SSL_set_fd(listening_ssl, listening_sock);
-    if(SSL_accept(listening_ssl) <= 0){
-        ERR_print_errors_fp(stderr);
-        return 0;
-    }
+    
     json peer_response = get_json(listening_ssl);
     if(peer_response["type"] == "DirectConnect" && peer_response["passcode"] == passcode){
         //create a worker thread for the connected user
@@ -466,10 +467,12 @@ void process_command(const string& cmd) {
 
 int main() {
     initialize_openssl();
-    ctx = create_ssl_client_context();
+    server_ctx = create_ssl_server_context();
+    client_ctx = create_ssl_client_context();
+    configure_ssl_context(server_ctx, "certs/client.crt", "certs/client.key");
 
     server_socket = create_socket();
-    server_ssl = SSL_new(ctx);
+    server_ssl = SSL_new(client_ctx);
     while(!connect_to_addr(server_socket, "127.0.0.1", 8080, server_ssl)){
         cout<<"Trying to connect to server\n";
         this_thread::sleep_for(chrono::seconds(1));
@@ -500,7 +503,8 @@ int main() {
 
     close(server_socket);
     SSL_free(server_ssl);
-    SSL_CTX_free(ctx);
+    SSL_CTX_free(server_ctx);
+    SSL_CTX_free(client_ctx);
     cleanup_openssl();
     return 0;
 }
