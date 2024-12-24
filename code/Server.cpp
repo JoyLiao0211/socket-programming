@@ -397,12 +397,12 @@ int main() {
             continue;
         }
 
-        SSL* ssl = SSL_new(ctx);
-        SSL_set_fd(ssl, new_socket);
-        if (SSL_accept(ssl) <= 0) {
+        SSL* new_client_ssl = SSL_new(ctx);
+        SSL_set_fd(new_client_ssl, new_socket);
+        if (SSL_accept(new_client_ssl) <= 0) {
             ERR_print_errors_fp(stderr);
         } 
-        Client* new_client = new Client(new_socket, ssl);
+        Client* new_client = new Client(new_socket, new_client_ssl);
 
         pthread_mutex_lock(&queue_mutex);
         client_queue.emplace(new_client);

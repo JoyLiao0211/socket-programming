@@ -15,8 +15,8 @@ using json = nlohmann::json;
 
 queue<json> message_queue;
 int server_socket;
-SSL *server_ssl; //todo: rename as server_ssl
-SSL_CTX *ctx;
+SSL *server_ssl;
+SSL_CTX *ctx;//does client need two ctx?
 bool logged_in = false;
 string self_username;
 
