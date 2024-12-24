@@ -200,7 +200,6 @@ pair<int,int> create_listening_socket(){//return socket_fd, port_num
 }
 
 
-
 void send_direct_message() {//handler TODO
     cout << "Enter the username of the recipient: ";
     string recipient;
@@ -257,6 +256,38 @@ void send_direct_message() {//handler TODO
     getline(cin, message_body);
     json message = create_direct_message(message_body);
     send_json(connected_users[recipient].ssl, message);
+}
+
+std::vector<char> readFileToVector(const std::string& filePath) {
+    std::vector<char> fileContents;
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+
+    if (!file) {
+        throw std::ios_base::failure("Error opening file: " + filePath);
+    }
+
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    fileContents.resize(static_cast<size_t>(fileSize));
+    if (!file.read(fileContents.data(), fileSize)) {
+        throw std::ios_base::failure("Error reading file: " + filePath);
+    }
+    return fileContents;
+}
+
+void writeVectorToFile(const std::vector<char>& data, const std::string& filePath) {
+    std::ofstream file(filePath, std::ios::binary);
+
+    if (!file) {
+        throw std::ios_base::failure("Error opening file for writing: " + filePath);
+    }
+
+    file.write(data.data(), static_cast<std::streamsize>(data.size()));
+
+    if (!file) {
+        throw std::ios_base::failure("Error writing to file: " + filePath);
+    }
 }
 
 void process_command(const string& cmd) {
