@@ -190,6 +190,39 @@ The following codes are used in responses to indicate the outcome of a request:
 
 ---
 
+### 7. File transfer
+
+1. **A asks if they can send a file to B**
+
+```json
+{
+    "type": "TransferFile",
+    "filename“: <string>,//optional
+}
+```
+
+2. **B responds to A's request**
+
+```json
+{
+    "type": "TransferFileResponse",
+    "accept": <int> //1 for ok, 0 for no
+}
+```
+
+3. **A sends the file to B**
+
+```json
+//TODO
+```
+
+#### workflow
+- scenario: A wants to send a file to B
+- A and B establish direct connection and use direct connection to transfer files
+1. A: can i send a file to you?
+2. B: ok
+3. A: send the file
+
 ## Notes
 - JSON keys are case-sensitive.
 - Fields marked as `<string>` must be valid UTF-8 encoded strings.

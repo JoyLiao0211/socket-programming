@@ -12,6 +12,8 @@
     - [ ] video
 - [ ] 5~10 min demo video
 
+- [ ] remove error codes, use 1 for all errors and add error message field
+
 ## bonus
 
 - [ ] webcam and microphone
