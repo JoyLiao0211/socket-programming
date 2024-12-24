@@ -1,11 +1,11 @@
 # Todo list
 
 - [x] multithread
-- [ ] send chat message
+- [x] send chat message
     - [x] relay mode
-    - [ ] direct mode
-        - [ ] Server: create mutex lock for every client socket
-- [ ] Message Encryption with OpenSSL
+    - [x] direct mode
+        - [x] Server: create mutex lock for every client socket
+- [x] Message Encryption with OpenSSL
 - [ ] transfer file with encryption
 - [ ] streaming
     - [ ] audio

@@ -16,7 +16,7 @@ using json = nlohmann::json;
 queue<json> message_queue;
 int server_socket;
 SSL *server_ssl;
-SSL_CTX *ctx;//does client need two ctx?
+SSL_CTX *ctx;//does client need two ctx? server & client
 bool logged_in = false;
 string self_username;
 
@@ -28,6 +28,24 @@ struct connected_user{
     connected_user(int _socket, string _name, SSL* _ssl):socket(_socket), name(_name), ssl(_ssl){}
     connected_user():socket(-1), name(""){}
 };
+
+struct InputRequest {
+    string* str_ptr;
+    condition_variable* cond_var;
+    bool *ready;
+};
+mutex input_queue_mtx;
+queue<InputRequest> input_queue;
+
+string get_input() {
+    string input;
+    condition_variable cond_var;
+    bool ready = false;
+    unique_lock<mutex> lock(input_queue_mtx);
+    input_queue.push({&input, &cond_var, &ready});
+    cond_var.wait(lock, [&ready] { return ready; });
+    return input;
+}
 
 map<string, connected_user>connected_users;
 
@@ -199,7 +217,50 @@ pair<int,int> create_listening_socket(){//return socket_fd, port_num
     return {direct_sock, port};
 }
 
+bool establish_direct_connection(string other){
+    string passcode = to_string(rand()); // some random string
+    auto [opening_sock, listening_port] = create_listening_socket();
+    if(opening_sock == -1){
+        cout<<"Failed to create listening socket\n";
+        return 0;
+    }
 
+    json message = create_direct_connect_request_to_server(other, "127.0.0.1", listening_port, passcode);
+    send_json(server_ssl, message);
+
+    //get response from server first
+    json res_json = get_response();
+    cout<<"response from server: "<<res_json.dump()<<"\n";
+    int res_code = res_json["code"].get<int>();
+    cout << RESPONSE_MESSAGES[res_code] << endl;
+    if(res_code != 0){
+        cout<<"Failed to send direct message\n";
+        return 0;
+    }
+    //get response from peer
+    int listening_sock = accept(opening_sock, NULL, NULL);
+    SSL* listening_ssl = SSL_new(ctx);
+    SSL_set_fd(listening_ssl, listening_sock);
+    if(SSL_accept(listening_ssl) <= 0){
+        ERR_print_errors_fp(stderr);
+        return 0;
+    }
+    // connected_users[recipient].socket = listening_sock;
+    close(opening_sock);
+    json peer_response = get_json(listening_ssl);
+    if(peer_response["type"] == "DirectConnect" && peer_response["passcode"] == passcode){
+        //create a worker thread for the connected user
+        thread direct_thread(direct_connect_thread_function, other);
+        direct_thread.detach();
+        cout<<"Connected to "<<other<<"\n";
+        connected_users[other] = connected_user(listening_sock, other, listening_ssl);
+        return 1;
+    }
+    else{
+        cout<<"Invalid response from peer\n";
+        return 0;
+    }
+}
 
 void send_direct_message() {//handler TODO
     cout << "Enter the username of the recipient: ";
@@ -207,47 +268,9 @@ void send_direct_message() {//handler TODO
     cin >> recipient;
     
     if(!connected_users.count(recipient) || connected_users[recipient].socket == -1){
-        string passcode = to_string(rand()); // some random string
-        auto [opening_sock, listening_port] = create_listening_socket();
-        if(opening_sock == -1){
-            cout<<"Failed to create listening socket\n";
-            return;
-        }
-
-        json message = create_direct_connect_request_to_server(recipient, "127.0.0.1", listening_port, passcode);
-        
-        // connected_users[recipient].name = recipient;
-        send_json(server_ssl, message);
-
-        //get response from server first
-        json res_json = get_response();
-        cout<<"response from server: "<<res_json.dump(4)<<"\n";
-        int res_code = res_json["code"].get<int>();
-        cout << RESPONSE_MESSAGES[res_code] << endl;
-        if(res_code != 0){
-            cout<<"Failed to send direct message\n";
-            return;
-        }
-        //get response from peer
-        int listening_sock = accept(opening_sock, NULL, NULL);
-        SSL* listening_ssl = SSL_new(ctx);
-        SSL_set_fd(listening_ssl, listening_sock);
-        if(SSL_accept(listening_ssl) <= 0){
-            ERR_print_errors_fp(stderr);
-            return;
-        }
-        // connected_users[recipient].socket = listening_sock;
-        close(opening_sock);
-        json peer_response = get_json(listening_ssl);
-        if(peer_response["type"] == "DirectConnect" && peer_response["passcode"] == passcode){
-            //create a worker thread for the connected user
-            thread direct_thread(direct_connect_thread_function, recipient);
-            direct_thread.detach();
-            cout<<"Connected to "<<recipient<<"\n";
-            connected_users[recipient] = connected_user(listening_sock, recipient, listening_ssl);
-        }
-        else{
-            cout<<"Invalid response from peer\n";
+        cout<<"Establishing connection with "<<recipient<<"\n";
+        if(!establish_direct_connection(recipient)){
+            cout<<"Failed to establish connection with "<<recipient<<"\n";
             return;
         }
     }
@@ -349,8 +372,21 @@ int main() {
         print_all_commands();
         string cmd;
         cin >> cmd;
+        {
+            //get queue mutex
+            unique_lock<mutex> lock(input_queue_mtx);
+            if (!input_queue.empty()) {
+                InputRequest req = input_queue.front();
+                *req.str_ptr = cmd;
+                *req.ready = true;
+                req.cond_var->notify_one();
+                input_queue.pop();
+                continue;
+            }
+            lock.unlock();
+        }
         if (cmd == "0") break;
-        process_command(cmd);
+        process_command(cmd);// main thread things
     }
 
     close(server_socket);
