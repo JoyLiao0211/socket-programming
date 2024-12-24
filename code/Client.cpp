@@ -26,7 +26,7 @@ struct connected_user{
     string name;
     queue<json> message;
     connected_user(int _socket, string _name, SSL* _ssl):socket(_socket), name(_name), ssl(_ssl){}
-    connected_user():socket(-1), name(""){}
+    connected_user():socket(-1), name(""), ssl(NULL){}
 };
 
 struct InputRequest {
@@ -79,13 +79,13 @@ bool connect_to_addr(int sock, const string& ip, uint16_t port, SSL *ssl) {
     return 1;
 }
 
-map<string, string> cmd_to_type = {
-    {"1", "Login"},
-    {"2", "Register"},
-    {"3", "OnlineUsers"},
-    {"4", "SendMessage"},
-    {"5", "SendDirectMessage"},
-};
+// map<string, string> cmd_to_type = {
+//     {"1", "Login"},
+//     {"2", "Register"},
+//     {"3", "OnlineUsers"},
+//     {"4", "SendMessage"},
+//     {"5", "SendDirectMessage"},
+// };
 
 void print_all_commands(){
     if(!logged_in)cout<<"1: Login\n";
@@ -95,15 +95,16 @@ void print_all_commands(){
     if(logged_in){
         cout<<"4: Send Message\n";
         cout<<"5: Send Direct Messages\n";
+        cout<<"6: Send File\n";
     }
     cout<<"0: Exit\n";
 }
 
 void direct_connect_thread_function(string other) {
-    SSL* ssl = connected_users[other].ssl;
+    SSL* other_ssl = connected_users[other].ssl;
     queue<json> &q = connected_users[other].message;
     while (true) {
-        json message = get_json(ssl);
+        json message = get_json(other_ssl);
         if(message.empty()){
             cout<<"Connection closed by "<<other<<"\n";
             connected_users.erase(other);
@@ -122,20 +123,15 @@ void direct_connect_thread_function(string other) {
 }
 
 void receive_response_thread() {
+    cerr << "Receive response thread started\n";
     while (true) {
         uint32_t resp_length_net;
         if (readn(server_ssl, &resp_length_net, sizeof(resp_length_net)) <= 0) {
             cerr << "Connection closed by server.\n";
             exit(-1);
         }
-        uint32_t resp_length = ntohl(resp_length_net);
-        vector<char> buffer(resp_length);
-        if (readn(server_ssl, buffer.data(), resp_length) <= 0) {
-            cerr << "Connection closed by server.\n";
-            exit(-1);
-        }
-        std::string response_string = std::string(buffer.begin(), buffer.end());
-        json response = json::parse(response_string);
+        json response = get_json(server_ssl);
+        cout << "Received response: " << response.dump(4) << endl;
         if (response["type"] == "NewMessage") {
             cout << "You got a new message from " << response["from"] << "\n";
             cout << "==========\n";
@@ -147,26 +143,32 @@ void receive_response_thread() {
             cout<<response.dump()<<"\n";
             string username = response["username"];
             int code=0;//response to server
-            json response_to_peer = create_direct_connect_response_to_client_from_peer(response["passcode"]);
+
+            //first send response to peer
+            json response_to_peer = create_direct_connect_response_to_client_from_peer(response["passcode"]); cerr<<"line: "<<__LINE__<<"\n";
             string ip = response["IP"].get<string>();
             int port = response["port"].get<int>();
             // connect to ip & port
-            int peer_sock = create_socket();
-            SSL* peer_ssl = SSL_new(ctx);
-            if(!connect_to_addr(peer_sock, ip, port, peer_ssl)){
+            int peer_sock = create_socket(); cerr<<"line: "<<__LINE__<<"\n";
+            SSL* peer_ssl = SSL_new(ctx); cerr<<"line: "<<__LINE__<<"\n";
+            if(!connect_to_addr(peer_sock, ip, port, peer_ssl)){ cerr<<"line: "<<__LINE__<<"\n";
+                cout<<"Failed to connect to peer\n";
                 code = 9;
             }
             else if(!send_json(peer_ssl, response_to_peer)){//send connect_to_peer to peer with passcode
+                cout<<"Failed to send response to peer\n";
                 code = 9;
-            }else{//successfull connection
-                connected_users[username] = connected_user(peer_sock, username, peer_ssl);
-                //start thread to receive messages from peer
-                thread direct_thread(direct_connect_thread_function, username);
-                direct_thread.detach(); 
             }
-            json response_to_server = create_direct_connect_response_to_server(code);
-            cout<<"response to server: "<<response_to_server.dump(4)<<"\n";
-            send_json(server_ssl, response_to_server);
+            else{//successfull connection
+                cout<<"Connected to "<<username<<"\n";
+                connected_users[username] = connected_user(peer_sock, username, peer_ssl); cerr<<"line: "<<__LINE__<<"\n";
+                //start thread to receive messages from peer
+                thread direct_thread(direct_connect_thread_function, username); cerr<<"line: "<<__LINE__<<"\n";
+                direct_thread.detach(); cerr<<"line: "<<__LINE__<<"\n";
+            }
+            json response_to_server = create_direct_connect_response_to_server(code); cerr<<"line: "<<__LINE__<<"\n";
+            cout<<"response to server: "<<response_to_server.dump(4)<<"\n";  cerr<<"line: "<<__LINE__<<"\n";
+            send_json(server_ssl, response_to_server); cerr<<"line: "<<__LINE__<<"\n";
         }
         else {
             message_queue.push(response);
@@ -226,7 +228,7 @@ bool establish_direct_connection(string other){
     }
 
     json message = create_direct_connect_request_to_server(other, "127.0.0.1", listening_port, passcode);
-    send_json(server_ssl, message);
+    if(!send_json(server_ssl, message))return 0;
 
     //get response from server first
     json res_json = get_response();
@@ -239,14 +241,13 @@ bool establish_direct_connection(string other){
     }
     //get response from peer
     int listening_sock = accept(opening_sock, NULL, NULL);
+    close(opening_sock);
     SSL* listening_ssl = SSL_new(ctx);
     SSL_set_fd(listening_ssl, listening_sock);
     if(SSL_accept(listening_ssl) <= 0){
         ERR_print_errors_fp(stderr);
         return 0;
     }
-    // connected_users[recipient].socket = listening_sock;
-    close(opening_sock);
     json peer_response = get_json(listening_ssl);
     if(peer_response["type"] == "DirectConnect" && peer_response["passcode"] == passcode){
         //create a worker thread for the connected user
@@ -282,7 +283,7 @@ void send_direct_message() {//handler TODO
     send_json(connected_users[recipient].ssl, message);
 }
 
-std::vector<char> readFileToVector(const std::string& filePath) {
+vector<char> readFileToVector(const std::string& filePath) {
     std::vector<char> fileContents;
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
 
@@ -312,6 +313,76 @@ void writeVectorToFile(const std::vector<char>& data, const std::string& filePat
     if (!file) {
         throw std::ios_base::failure("Error writing to file: " + filePath);
     }
+}
+
+void handle_send_file_request() {
+    cout << "Enter the username of the recipient: ";
+    string recipient;
+    cin >> recipient;
+
+    if (!connected_users.count(recipient) || connected_users[recipient].socket == -1) {
+        cout << "Establishing connection with " << recipient << "\n";
+        if (!establish_direct_connection(recipient)) {
+            cout << "Failed to establish connection with " << recipient << "\n";
+            return;
+        }
+    }
+
+    cout << "Enter the path of the file to send: ";
+    string file_path;
+    cin >> file_path;
+    string file_name = file_path.substr(file_path.find_last_of('/') + 1);
+
+    vector<char> file_data;
+    try {
+        file_data = readFileToVector(file_path);
+    } catch (const std::ios_base::failure& e) {
+        cout << "Failed to read file: " << e.what() << "\n";
+        return;
+    }
+    json message = create_file_transfer_request(file_path);
+    send_json(connected_users[recipient].ssl, message);
+    json response_from_recipient = get_json(connected_users[recipient].ssl);
+    int accept = response_from_recipient["accept"].get<int>();
+    if(accept == 0){
+        cout<<"Recipient rejected the file transfer\n";
+        return;
+    }
+    if (!send_file(connected_users[recipient].ssl, file_data)) {
+        cout << "Failed to send file\n";
+        return;
+    }
+    cout << "File sent successfully\n";
+}
+
+void handle_receive_file(string other, json message) {
+    string file_name = message["filename"];
+    cout << "You got a file transfer request from " << other << "\n";
+    cout << "Do you want to accept the file transfer? (y/n): ";
+    string choice = get_input();
+    if (choice != "y") {
+        cout << "File transfer rejected\n";
+        json response = create_file_transfer_response(0);
+        send_json(connected_users[other].ssl, response);
+        return;
+    }
+    json response = create_file_transfer_response(1);
+    send_json(connected_users[other].ssl, response);
+    vector<char> file_data;
+    if(!receive_file(connected_users[other].ssl, file_data)){
+        cout<<"Failed to receive file\n";
+        return;
+    }
+    cout << "Enter the path to save the file: ";
+    string save_path = get_input();
+    try {
+        writeVectorToFile(file_data, save_path);
+        cout << "File saved successfully\n";
+    } catch (const std::ios_base::failure& e) {
+        cout << "Failed to write file: " << e.what() << "\n";
+        return;
+    }
+    
 }
 
 void process_command(const string& cmd) {
@@ -380,6 +451,14 @@ void process_command(const string& cmd) {
         }
         send_direct_message();
     }
+    else if(cmd == "6"){//send file
+        if (!logged_in) {
+            cout << "You need to login first\n";
+            return;
+        }
+        handle_send_file_request();
+        return;
+    }
     else{
         cout<<"Invalid command\n";
     }
@@ -424,6 +503,5 @@ int main() {
     SSL_free(server_ssl);
     SSL_CTX_free(ctx);
     cleanup_openssl();
-    receiver.detach(); // Detach the thread to allow it to run independently
     return 0;
 }
