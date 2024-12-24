@@ -125,12 +125,11 @@ void direct_connect_thread_function(string other) {
 void receive_response_thread() {
     cerr << "Receive response thread started\n";
     while (true) {
-        uint32_t resp_length_net;
-        if (readn(server_ssl, &resp_length_net, sizeof(resp_length_net)) <= 0) {
-            cerr << "Connection closed by server.\n";
-            exit(-1);
-        }
         json response = get_json(server_ssl);
+        if(response.empty()){
+            cerr<<"Connection closed by server\n";
+            return;
+        }
         cout << "Received response: " << response.dump(4) << endl;
         if (response["type"] == "NewMessage") {
             cout << "You got a new message from " << response["from"] << "\n";
