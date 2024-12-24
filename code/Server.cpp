@@ -37,11 +37,12 @@ vector<User> users;
 
 #ifdef DEBUG
 void init_debug_users(){
-    users = {
-        {"j", "j", false, nullptr},
-        {"o", "o", false, nullptr},
-        {"y", "y", false, nullptr}
-    };
+    for(char c='a'; c<='z'; c++){
+        string username(1, c);
+        string password(1, c);
+        users.push_back({username, password, false, nullptr});
+    }
+    cerr<<"users initialized: all username of one lowercase alphabet\n";
 }
 #endif
 
@@ -65,6 +66,7 @@ pthread_cond_t  queue_cond  = PTHREAD_COND_INITIALIZER;
 // ----------------------- Utility Functions ------------------------
 void client_logout(Client &client) {
     if (client.uid != -1) {
+        cerr << "logging out " << users[client.uid].username << endl;
         users[client.uid].online = false;
         users[client.uid].client = nullptr;
         client.uid = -1;
@@ -262,14 +264,18 @@ void* worker_function(void* arg) {
             pthread_mutex_lock(&client->socket_mutex);
         }
 
-        // Read the message from the client
+        // Read the message from the client, if any
         json request=get_json(client->ssl, 1);//non-blockingly read the whole json
         // -- UNLOCK (with debug) --
         {
             pthread_mutex_unlock(&client->socket_mutex);
         }
+        if(!request.empty() && request["type"] == "EOF"){
+            client_disconnect(*client);
+            continue;
+        }
 
-        if(!request.empty()){
+        else if(!request.empty()){
             client->message = request.dump();
 
             // Now handle the message

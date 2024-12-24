@@ -146,13 +146,28 @@ nlohmann::json get_json(SSL *ssl, bool peek_first = false) {
     }
 
     if (peek_first) {//peek if any data is in the buffer
+        // std::cerr<<"peeking\n";
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);//is this neccessary? 
         char c;
-        if (SSL_peek(ssl, &c, 1) <= 0) {
-            fcntl(fd, F_SETFL, flags);
-            return {};
-        }
+        int bytes_peeked = SSL_peek(ssl, &c, 1);
         fcntl(fd, F_SETFL, flags);
+        if(bytes_peeked <= 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){
+            // fcntl(fd, F_SETFL, flags);
+            // std::cerr<<"no data yet\n";
+            return {};
+        }else if(bytes_peeked <= 0){
+            // if(errno == EAGAIN || errno == EWOULDBLOCK){
+            //     fcntl(fd, F_SETFL, flags);
+            
+            //     return eof_response;
+            // }
+            std::cerr << "[get_json] Error peeking data: EOF\n";
+            json eof_response;
+            eof_response["type"] = "EOF";
+            return eof_response;
+        }
+        // else std::cerr<<"peeked "<<bytes_peeked<<" bytes\n";
+        
     }
 
     // 1) Receive the length of the JSON message
