@@ -372,8 +372,7 @@ int main() {
         print_all_commands();
         string cmd;
         cin >> cmd;
-        {
-            //get queue mutex
+        {//handle input requests from other threads
             unique_lock<mutex> lock(input_queue_mtx);
             if (!input_queue.empty()) {
                 InputRequest req = input_queue.front();
