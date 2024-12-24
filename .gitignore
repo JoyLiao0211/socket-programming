@@ -1,4 +1,5 @@
 .vscode
 code/Server
 code/Client
-code/*.o
+*.o
+*.swp
