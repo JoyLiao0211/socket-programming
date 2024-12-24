@@ -11,6 +11,9 @@ TARGETS = Client Server
 
 all: $(TARGETS)
 
+debug: CXXFLAGS += -DDEBUG
+debug: all
+
 Client: Client.o
 	$(CXX) $(CXXFLAGS) -o Client Client.o -lssl -lcrypto
 
