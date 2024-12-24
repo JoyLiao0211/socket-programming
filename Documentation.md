@@ -196,7 +196,7 @@ The following codes are used in responses to indicate the outcome of a request:
 
 ```json
 {
-    "type": "TransferFile",
+    "type": "TransferFileRequest",
     "filename“: <string>,//optional
 }
 ```
