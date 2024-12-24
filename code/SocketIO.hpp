@@ -14,6 +14,7 @@ using json = nlohmann::json;
 #include <arpa/inet.h>
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 // Function to read exactly n bytes from a descriptor
 inline ssize_t readn(SSL * ssl, void *vptr, size_t n) {
@@ -52,6 +53,57 @@ inline ssize_t writen(SSL *ssl, const void *vptr, size_t n) {
     }
     return n;
 }
+
+const int CHUNK_SIZE = 4096;
+bool write_file(SSL *ssl, vector<char> &data) {
+    uint32_t msg_length = static_cast<uint32_t>(data.size());
+    uint32_t msg_length_net = htonl(msg_length);
+    ssize_t bytes_sent = writen(ssl, &msg_length_net, sizeof(msg_length_net));
+    if (bytes_sent != sizeof(msg_length_net)) {
+        std::cerr << "[send_file] Error sending message length. Bytes sent: " << bytes_sent << "\n";
+        return false;
+    }
+
+    int pos = 0;
+    while (msg_length > 0) {
+        int send_length = min(CHUNK_SIZE, msg_length);
+        char *ptr = &vec[ptr];
+        bytes_sent = writen(ssl, ptr, send_length);
+        if (bytes_sent != static_cast<ssize_t>(send_length)) {
+            std::cerr << "[send_file] Error sending file. Bytes sent: " << bytes_sent << "\n";
+            return false;
+        }
+        msg_length -= bytes_sent;
+        pos += bytes_sent;
+    }
+    return true;
+}
+
+bool read_file(SSL *ssl, vector<char> &data) {
+    uint32_t length_net;
+    if (readn(ssl, &length_net, sizeof(length_net)) != sizeof(length_net)) {
+        std::cerr << "[read file] Error reading message length.\n";
+        return 0;
+    }
+    uint32_t length_host = ntohl(length_net); // Convert length from network to host byte order
+    if (length_host == 0) {
+        return 0;
+    }
+    data.resize(length_host);
+
+    int pos = 0;
+    while (pos < length_host) {
+        int rcv_length = min(CHUNK_SIZE, length_host - pos);
+        ssize_t bytes_read = readn(ssl, data.data() + pos, rcv_length);
+        if (bytes_read != static_cast<ssize_t>(rcv_length)) {
+            std::cerr << "[read_file] Error reading file. Bytes sent: " << bytes_read << "\n";
+            return false;
+        }
+        pos += bytes_read;
+    }
+    return true;
+}
+
 
 bool send_json(SSL *ssl, const nlohmann::json& message) {
     // using json = nlohmann::json;
