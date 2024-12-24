@@ -18,9 +18,11 @@ bool logged_in = false;
 string self_username;
 
 struct connected_user{
-    string name;
     int socket;
+    string name;
     queue<json> message;
+    connected_user(int _socket, string _name):socket(_socket), name(_name){}
+    connected_user():socket(-1), name(""){}
 };
 
 map<string, connected_user>connected_users;
@@ -72,24 +74,21 @@ void direct_connect_thread_function(string other) {
     int sock = connected_users[other].socket;
     queue<json> &q = connected_users[other].message;
     while (true) {
-        uint32_t msg_length_net;
-        if (readn(sock, &msg_length_net, sizeof(msg_length_net)) <= 0) {
-            cerr << "Connection closed by " << other << ".\n";
-            close(sock);
+        json message = get_json(sock);
+        if(message.empty()){
+            cout<<"Connection closed by "<<other<<"\n";
             connected_users.erase(other);
             return;
         }
-        uint32_t msg_length = ntohl(msg_length_net);
-        vector<char> buffer(msg_length);
-        if (readn(sock, buffer.data(), msg_length) <= 0) {
-            cerr << "Connection closed by " << other << ".\n";
-            close(sock);
-            connected_users.erase(other);
-            return;
+        else if(message["type"] == "DirectMessage"){
+            cout << "You got a new DIRECT message from " << other << "\n";
+            cout << "==========\n";
+            cout << (string)message["message"]<< "\n";
+            cout << "==========\n";
         }
-        string message_string = string(buffer.begin(), buffer.end());
-        json message = json::parse(message_string);
-        q.push(message);
+        else{
+            q.push(message);
+        }
     }
 }
 
@@ -116,7 +115,7 @@ void receive_response_thread() {
         }
         else if(response["type"] == "DirectConnectRequest"){
             cout<<"receive direct connect request\n";
-            cout<<response.dump(4)<<"\n";
+            cout<<response.dump()<<"\n";
             string username = response["username"];
             int code=0;//response to server
             json response_to_peer = create_direct_connect_response_to_client_from_peer(response["passcode"]);
@@ -124,15 +123,12 @@ void receive_response_thread() {
             int port = response["port"].get<int>();
             // connect to ip & port
             int peer_sock = create_socket();
-            connected_users[username].socket = peer_sock;
-            connected_users[username].name = username;
             if(!connect_to_addr(peer_sock, ip, port)){
                 code = 9;
-            }else{//send connect_to_peer to peer with passcode
-                if(!send_json(peer_sock, response_to_peer)){
-                    code = 9;
-                    break;
-                }
+            }else if(!send_json(peer_sock, response_to_peer)){//send connect_to_peer to peer with passcode
+                code = 9;
+            }else{//successfull connection
+                connected_users[username] = connected_user(peer_sock, username);
                 //start thread to receive messages from peer
                 thread direct_thread(direct_connect_thread_function, username);
                 direct_thread.detach(); 
@@ -198,19 +194,19 @@ void send_direct_message() {//handler TODO
     cin >> recipient;
     
     if(!connected_users.count(recipient) || connected_users[recipient].socket == -1){
-        
         string passcode = to_string(rand()); // some random string
-        auto [listening_sock, listening_port] = create_listening_socket();
-        if(listening_sock == -1){
+        auto [opening_sock, listening_port] = create_listening_socket();
+        if(opening_sock == -1){
             cout<<"Failed to create listening socket\n";
             return;
         }
 
         json message = create_direct_connect_request_to_server(recipient, "127.0.0.1", listening_port, passcode);
-        connected_users[recipient].socket = listening_sock;
+        
         connected_users[recipient].name = recipient;
         send_json(server_socket, message);
 
+        //get response from server first
         json res_json = get_response();
         cout<<"response from server: "<<res_json.dump(4)<<"\n";
         int res_code = res_json["code"].get<int>();
@@ -219,7 +215,10 @@ void send_direct_message() {//handler TODO
             cout<<"Failed to send direct message\n";
             return;
         }
-        connected_users[recipient] = {};
+        //get response from peer
+        int listening_sock = accept(opening_sock, NULL, NULL);
+        connected_users[recipient].socket = listening_sock;
+        close(opening_sock);
         json peer_response = get_json(listening_sock);
         if(peer_response["type"] == "DirectConnect" && peer_response["passcode"] == passcode){
             //create a worker thread for the connected user
@@ -237,7 +236,7 @@ void send_direct_message() {//handler TODO
     cin.ignore();
     getline(cin, message_body);
     json message = create_direct_message(message_body);
-
+    send_json(connected_users[recipient].socket, message);
 }
 
 void process_command(const string& cmd) {

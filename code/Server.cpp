@@ -401,15 +401,3 @@ int main() {
     close(server_fd);
     return 0;
 }
-
-// ----------------------- Optional Debug Helper ------------------------
-#include <iostream>
-void print_json_dump(const string &json_dump) {
-    cout << "Received JSON: " << json_dump << endl;
-}
-#ifdef DEBUG
-// Keep stderr as it is when DEBUG is defined
-#else
-#undef cerr
-#define cerr 0 && std::cerr
-#endif

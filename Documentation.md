@@ -162,13 +162,14 @@ The following codes are used in responses to indicate the outcome of a request:
 
 
 
-**5. Response (b -> a):**
+**5. Response (b -> a):** ==BUG here==
 ```json
 {
     "type": "DirectConnect",
     "passcode": <string>
 }
 ```
+
 
 **6. Direct message(a<->b):**
 ```json
@@ -194,4 +195,3 @@ The following codes are used in responses to indicate the outcome of a request:
 - Fields marked as `<string>` must be valid UTF-8 encoded strings.
 - Responses always include a `code` field to indicate success or error.
 - Additional fields may be included in responses for debugging purposes.
-
