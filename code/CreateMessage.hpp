@@ -152,7 +152,31 @@ json create_direct_message(const string &message) {
     return request;
 }
 
-// ----------------------- 7. invalid ------------------------
+// ----------------------- 7. file transfer ------------------------
+
+// 1. Request from client a to b
+
+json create_file_transfer_request(const string &filename) {
+    json request;
+    request["type"] = "TransferFileRequest";
+    request["filename"] = filename;
+    return request;
+}
+
+// 2. Response from client b to a
+
+json create_file_transfer_response(int accept) {// 1: accept, 0: reject
+    json response;
+    response["type"] = "TransferFileResponse";
+    response["accept"] = accept;
+    return response;
+}
+
+// 3. File data from client a to b
+
+
+
+// ----------------------- INVALID ------------------------
 
 json create_invalid_response() {
     json response;
