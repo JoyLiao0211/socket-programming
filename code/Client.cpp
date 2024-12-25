@@ -489,9 +489,9 @@ int main() {
 
     server_socket = create_socket();
     server_ssl = SSL_new(client_ctx);
-    while(!connect_to_addr(server_socket, "127.0.0.1", 8080, server_ssl)){
-        cout<<"Trying to connect to server\n";
-        this_thread::sleep_for(chrono::seconds(1));
+    if(!connect_to_addr(server_socket, "127.0.0.1", 8080, server_ssl)){
+        cout<<"Cannot to connect to server\n";
+        return 0;
     }
 
     thread receiver(receive_response_thread); // Start the receive response thread

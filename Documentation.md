@@ -183,9 +183,10 @@ The following codes are used in responses to indicate the outcome of a request:
 
 - request a->server
 - request server->b
+- b send a response to a directly
 - response b->server
 - response server-> a
-- response b->a
+- a reads the response sent directly from b
 - direct message a<->b
 
 ---
