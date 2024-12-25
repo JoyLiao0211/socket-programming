@@ -24,4 +24,7 @@ Server: Server.o
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGETS)
+	rm -f $(OBJS) $(TARGETS) certs/*
+
+clean_certs:
+	rm -f certs/*

@@ -14,6 +14,8 @@
 using namespace std;
 using json = nlohmann::json;
 
+string session_name;
+
 struct Client {
     int uid = -1;
     string message = "";
@@ -301,9 +303,13 @@ int main() {
 #endif
 
     initialize_openssl();
+    srand(time(NULL));
+    for (int i = 0;i < 5;i++) session_name += char(rand() % 26 + 'a');
+    cerr << "Session name: " << session_name << "\n";
+    generate_cert(session_name);
 
     SSL_CTX* ctx = create_ssl_server_context();
-    configure_ssl_context(ctx, "certs/server.crt", "certs/server.key");
+    configure_ssl_context(ctx, session_name);
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {

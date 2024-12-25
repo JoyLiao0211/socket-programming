@@ -19,6 +19,7 @@ SSL *server_ssl;
 SSL_CTX *client_ctx, *server_ctx;//does client need two ctx? server & client
 bool logged_in = false;
 string self_username;
+string session_name;
 
 struct connected_user{
     int socket;
@@ -483,9 +484,15 @@ void process_command(const string& cmd) {
 
 int main() {
     initialize_openssl();
+    //random session name
+    srand(time(NULL));
+    for (int i = 0;i < 5;i++) session_name += char(rand() % 26 + 'a');
+    cerr << "Session name: " << session_name << "\n";
+    generate_cert(session_name);
+
     server_ctx = create_ssl_server_context();
     client_ctx = create_ssl_client_context();
-    configure_ssl_context(server_ctx, "certs/client.crt", "certs/client.key");
+    configure_ssl_context(server_ctx, session_name);
 
     server_socket = create_socket();
     server_ssl = SSL_new(client_ctx);
