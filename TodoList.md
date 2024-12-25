@@ -20,9 +20,7 @@
 - [x] login -> exit, server need to logout that user
 - [x] a b client, a exit, b read eof (its a feature not a bug)
 - [x] when server closes connection, client process terminates
-- [ ] cert stuffs
-    - [ ] arg: where cert
-    - [ ] auto create cert
+- [x] cert stuffs
 
 ## bonus
 
