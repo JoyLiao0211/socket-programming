@@ -12,6 +12,7 @@
         2. read and send chunks at the same time?
 - [ ] streaming
     - [ ] audio
+        - [ ] file selection
     - [ ] video
 - [ ] 5~10 min demo video
 

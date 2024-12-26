@@ -64,3 +64,7 @@ This cleans up all compiled binaries and object files.
 ```
 nlohmann-json
 ```
+
+```
+sudo apt install -y libopencv-dev
+```
