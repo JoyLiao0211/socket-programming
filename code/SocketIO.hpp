@@ -112,7 +112,8 @@ bool send_json(SSL *ssl, const nlohmann::json& message) {
     // using json = nlohmann::json;
     // Serialize JSON to string
     std::string message_str = message.dump(); // or message.dump(4) if you prefer pretty print
-    std::cerr<<"sending\n"<<message_str<<"\n";
+    std::cerr<<"sending\n";
+    if(message_str.length()<50)std::cerr<<message_str<<"\n";
     uint32_t msg_length = static_cast<uint32_t>(message_str.size());
 
     // Convert message length to network byte order

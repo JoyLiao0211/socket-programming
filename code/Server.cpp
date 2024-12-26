@@ -17,6 +17,8 @@ using json = nlohmann::json;
 
 string session_name;
 
+const string server_data_path = "../server_data/";
+
 struct Client {
     int uid = -1;
     string message = "";
@@ -187,7 +189,7 @@ vector<string> getDatabaseFiles(const string& directoryPath, string filetype) {
 
 void handle_audio_request(Client &client, json request) {
     string filename = request["filename"];  
-    filename = "server_data/" + filename;
+    filename = server_data_path + filename;
     Audio audio(filename);
     if (!audio.initialize()) {
         cerr << "Audio initialize error\n";
@@ -286,7 +288,7 @@ void handle_client_message(Client &client) {
         }
         if (request["filename"].get<string>() == "") {
             //first request, return list of files
-            vector<string> files = getDatabaseFiles("server_data", ".mp3");
+            vector<string> files = getDatabaseFiles(server_data_path, ".mp3");
             json response = create_audio_list(0, files); 
             send_json_to_client(client, response);
         } else {

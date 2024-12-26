@@ -61,19 +61,17 @@ This cleans up all compiled binaries and object files.
 
 ## Phase 2
 
+- json: (no install needed)
 ```
 nlohmann-json
 ```
 
+- opencv
 ```
 sudo apt install -y libopencv-dev
 ```
 
-```
-sudo apt install -y libopencv-dev
-```
-
-PortAudio
+- PortAudio
 ```
 sudo apt-get install libasound-dev
 sudo apt-get install portaudio19-dev

@@ -420,6 +420,10 @@ void handle_audio_streaming(){
 
     string filename;
     cin >> filename;
+    if(find(files.begin(), files.end(), filename) == files.end()){
+        cout<<"Invalid filename\n";
+        return;
+    }
     request = create_audio_request(filename);
     send_json(server_ssl, request);
     res_json = get_response();
