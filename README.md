@@ -68,3 +68,14 @@ nlohmann-json
 ```
 sudo apt install -y libopencv-dev
 ```
+
+```
+sudo apt install -y libopencv-dev
+```
+
+PortAudio
+```
+sudo apt-get install libasound-dev
+sudo apt-get install portaudio19-dev
+sudo apt-get install libmpg123-dev
+```

@@ -193,7 +193,7 @@ nlohmann::json get_json(SSL *ssl, bool peek_first = false) {
 
     // 3) Parse the JSON
     try {
-        std::cout << "Received:\n" << std::string(buffer.begin(), buffer.end()) << "\n";
+        //std::cout << "Received:\n" << std::string(buffer.begin(), buffer.end()) << "\n";
         return nlohmann::json::parse(buffer.begin(), buffer.end());
     } catch (const nlohmann::json::parse_error &e) {
         std::cerr << "[get_json] JSON parse error: " << e.what() << "\n";
