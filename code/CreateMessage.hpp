@@ -172,7 +172,37 @@ json create_file_transfer_response(int accept) {// 1: accept, 0: reject
     return response;
 }
 
-// 3. File data from client a to b: send in chunks
+// ----------------------- 8. Audio transfer ------------------------
+json create_audio_request(const string &filename) {
+    json request;
+    request["type"] = "AudioRequest";
+    request["filename"] = filename;
+    return request;
+}
+
+json create_audio_data(vector<char> data, int pos, int end) {
+    json response;
+    response["type"] = "AudioData";
+    response["data"] = data;
+    response["pos"] = pos;
+    response["end"] = end;
+    return response;
+}
+json create_audio_list(int code, vector<string> files) {
+    json response;
+    response["type"] = "AudioList";
+    response["code"] = code;
+    response["files"] = files;
+    return response;
+}
+json create_audio_response(int code, int rate, int channels) {
+    json response;
+    response["type"] = "AudioResponse";
+    response["code"] = code;
+    response["rate"] = rate;
+    response["channels"] = channels;
+    return response;
+}
 
 // ----------------------- INVALID ------------------------
 
@@ -182,3 +212,5 @@ json create_invalid_response() {
     response["code"] = 5;
     return response;
 }
+
+

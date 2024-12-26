@@ -10,8 +10,8 @@
     - [ ] very big files
         1. disallow sending file size more than some threshold?
         2. read and send chunks at the same time?
-- [ ] streaming
-    - [ ] audio
+- [x] streaming
+    - [x] audio
     - [ ] video
 - [ ] 5~10 min demo video
 
@@ -21,6 +21,9 @@
 - [x] a b client, a exit, b read eof (its a feature not a bug)
 - [x] when server closes connection, client process terminates
 - [x] cert stuffs
+    - [ ] arg: where cert
+    - [x] auto create cert
+- [ ] client can press enter to stop playing audio
 
 ## bonus
 

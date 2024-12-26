@@ -9,6 +9,7 @@
 #include "CreateMessage.hpp"
 #include "Code.h"
 #include "SSL.hpp"
+#include "Audio.hpp"
 
 using namespace std;
 using json = nlohmann::json;
@@ -97,6 +98,7 @@ void print_all_commands(){
         cout<<"4: Send Message\n";
         cout<<"5: Send Direct Messages\n";
         cout<<"6: Send File\n";
+        cout<<"7: Listen to Music\n";
     }
     cout<<"0: Exit\n";
     cout.flush();
@@ -145,7 +147,7 @@ void receive_response_thread() {// response from server
             cerr<<"Connection closed by server\n";
             exit(0);
         }
-        cout << "Received response: " << response.dump(4) << endl;
+        //cout << "Received response: " << response.dump(4) << endl;
         if (response["type"] == "NewMessage") {
             cout << "You got a new message from " << response["from"] << "\n";
             cout << "==========\n";
@@ -402,6 +404,67 @@ void handle_receive_file(string other, json message) {
     
 }
 
+void handle_audio_streaming(){
+    json request = create_audio_request("");
+    send_json(server_ssl, request);
+    json res_json = get_response();
+    if (res_json["code"].get<int>() != 0) {
+        cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
+        return;
+    }
+    cout << "Select a song to play: \n";
+    vector<string> files = res_json["files"].get<vector<string>>();
+    for (string song: files) {
+        cout << "    " << song << endl; 
+    }
+
+    string filename;
+    cin >> filename;
+    request = create_audio_request(filename);
+    send_json(server_ssl, request);
+    res_json = get_response();
+    if (res_json["code"].get<int>() != 0) {
+        cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
+        return;
+    }
+
+    int rate = res_json["rate"].get<int>();
+    int channels = res_json["channels"].get<int>();
+    AudioPlayer player; 
+    player.initialize(rate, channels);
+    if (!player.play()) {
+        cerr << "Audio player error\n";
+        return;
+    }
+    while (true) {
+        res_json = get_response();
+        vector<char> vec = res_json["data"].get<vector<char>>();
+        int start = player.data.start, end = player.data.end;
+        int tot = QUEUE_SIZE;
+        int num = vec.size();
+        while ((start - end + tot - 1) % tot < num) {
+            this_thread::sleep_for(chrono::milliseconds(10));
+            start = player.data.start, end = player.data.end;
+        }
+        if (end + num >= tot) {
+            memcpy(player.data.pcm_data + end, vec.data(), (tot - end));
+            memcpy(player.data.pcm_data, vec.data() + (tot - end), (num - tot + end));
+        } else {
+            memcpy(player.data.pcm_data + end, vec.data(), (num));
+        }
+        end = (end + num) % tot;
+        player.data.end = end;
+        if (res_json["end"].get<int>() == 1) {
+            cerr << "end\n";
+            break;
+        }
+    }
+    while (player.data.start != player.data.end) {
+        this_thread::sleep_for(chrono::milliseconds(10));
+    }
+    player.stop();
+}
+
 void process_command(const string& cmd) {
     string username, password, message_body;
     if(cmd == "1"){//login / logout
@@ -475,8 +538,13 @@ void process_command(const string& cmd) {
         }
         handle_send_file_request();
         return;
-    }
-    else{
+    } else if (cmd == "7") {
+        if (!logged_in) {
+            cout << "You need to login first\n";
+            return;
+        }
+        handle_audio_streaming();
+    } else{
         cout<<"Invalid command\n";
     }
 }
