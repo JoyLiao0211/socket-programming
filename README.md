@@ -66,11 +66,15 @@ This cleans up all compiled binaries and object files.
 nlohmann-json
 ```
 
-### opencv
+### opencv: wait no i don't want to use this
 ```
 sudo apt install libopencv-dev
 ```
 
+### ffmpeg
+```
+sudo apt install ffmpeg
+```
 
 ### PortAudio
 ```
