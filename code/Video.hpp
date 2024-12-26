@@ -70,13 +70,17 @@ void receive_play_video(std::vector<char> data, bool start, bool end) {
 
     // Write video data if pipe is open
     if (pipe != NULL && !data.empty()) {
-        size_t bytesWritten = fwrite(data.data(), 1, data.size(), pipe);
-
-        // Handle case where FFplay process is closed (e.g., 'X' button)
-        if (bytesWritten < data.size()) {
-            std::cerr << "Client: FFplay closed. Restarting..." << std::endl;
-            pclose(pipe);    // Close the broken pipe
-            pipe = NULL;     // Reset pointer for restart
+        try{
+            size_t bytesWritten = fwrite(data.data(), 1, data.size(), pipe);
+            // Handle case where FFplay process is closed (e.g., 'X' button)
+            if (bytesWritten < data.size()) {
+                std::cerr << "Client: FFplay closed. Restarting..." << std::endl;
+                pclose(pipe);    // Close the broken pipe
+                pipe = NULL;     // Reset pointer for restart
+            }
+        } catch (std::exception& e) {
+            std::cerr << "Client: Error writing to FFplay: " << e.what() << std::endl;
+            pipe = NULL;  // Reset pointer to prevent further writes
         }
     }
 }
