@@ -10,6 +10,8 @@
 #include "Code.h"
 #include "SSL.hpp"
 #include "Audio.hpp"
+#include "Video.hpp"
+// #include <opencv2/opencv.hpp>
 
 using namespace std;
 using json = nlohmann::json;
@@ -81,14 +83,6 @@ bool connect_to_addr(int sock, const string& ip, uint16_t port, SSL *ssl) {
     return 1;
 }
 
-// map<string, string> cmd_to_type = {
-//     {"1", "Login"},
-//     {"2", "Register"},
-//     {"3", "OnlineUsers"},
-//     {"4", "SendMessage"},
-//     {"5", "SendDirectMessage"},
-// };
-
 void print_all_commands(){
     if(!logged_in)cout<<"1: Login\n";
     else cout<<"1: Logout\n";
@@ -99,6 +93,7 @@ void print_all_commands(){
         cout<<"5: Send Direct Messages\n";
         cout<<"6: Send File\n";
         cout<<"7: Listen to Music\n";
+        cout<<"8: Watch a Video\n";
     }
     cout<<"0: Exit\n";
     cout.flush();
@@ -469,6 +464,54 @@ void handle_audio_streaming(){
     player.stop();
 }
 
+void handle_video_streaming(){
+    json request_list = create_video_request("");
+    send_json(server_ssl, request_list);
+    json video_list = get_response();
+    if(video_list["type"] != "VideoList"){
+        cout<<"Invalid response\n";
+        return;
+    }
+    if(video_list["code"].get<int>() != 0){
+        cout<<RESPONSE_MESSAGES[video_list["code"].get<int>()]<<"\n";
+        cout<<"cannot get video list\n";
+        return;
+    }
+    vector<string> files = video_list["files"].get<vector<string>>();
+    cout<<"Select a video to play: \n";
+    for(string file: files){
+        cout<<"    "<<file<<"\n";
+    }
+    string filename;
+    cin>>filename;
+    if(find(files.begin(), files.end(), filename) == files.end()){
+        cout<<"Invalid filename\n";
+        return;
+    }
+    json request_video = create_video_request(filename);
+    send_json(server_ssl, request_video);
+    while(true){
+        json video_response = get_response();
+        if(video_response["type"] != "VideoResponse"){
+            cout<<"Invalid response\n";
+            return;
+        }
+        if(video_response["code"].get<int>() != 0){
+            cout<<RESPONSE_MESSAGES[video_response["code"].get<int>()]<<"\n";
+            cout<<"cannot get video\n";
+            return;
+        }
+        vector<char> data = video_response["data"].get<vector<char>>();
+        bool start = video_response["start"].get<int>();
+        if(start){
+            cout<<"Start playing video\n";
+        }
+        bool end = video_response["end"].get<int>();
+        receive_play_video(data, start, end);
+        if(end == 1)break;
+    }
+}
+
 void process_command(const string& cmd) {
     string username, password, message_body;
     if(cmd == "1"){//login / logout
@@ -548,7 +591,15 @@ void process_command(const string& cmd) {
             return;
         }
         handle_audio_streaming();
-    } else{
+    }else if(cmd == "8"){
+        cout<<"Audio streaming\n";
+        if(!logged_in){
+            cout<<"You need to login first\n";
+            return;
+        }
+        handle_video_streaming();
+    }
+    else{
         cout<<"Invalid command\n";
     }
 }

@@ -11,6 +11,8 @@
 #include "SSL.hpp"
 #include "CreateMessage.hpp"
 #include "Audio.hpp"
+// #include <opencv2/opencv.hpp>
+#include "Video.hpp"
 
 using namespace std;
 using json = nlohmann::json;
@@ -18,6 +20,8 @@ using json = nlohmann::json;
 string session_name;
 
 const string server_data_path = "../server_data/";
+const string server_audio_path = server_data_path + "audio_files/";
+const string server_video_path = server_data_path + "video_files/";
 
 struct Client {
     int uid = -1;
@@ -188,11 +192,12 @@ vector<string> getDatabaseFiles(const string& directoryPath, string filetype) {
 }
 
 void handle_audio_request(Client &client, json request) {
-    string filename = request["filename"];  
-    filename = server_data_path + filename;
-    Audio audio(filename);
+    string filepath = server_audio_path + request["filename"].get<string>();
+    //check if filename exists: TODO
+    Audio audio(filepath);
     if (!audio.initialize()) {
         cerr << "Audio initialize error\n";
+        //send error to client: TODO
         return;
     }
     json response = create_audio_response(0, audio.rate, audio.channels);
@@ -207,6 +212,16 @@ void handle_audio_request(Client &client, json request) {
 
     response = create_audio_data(vector<char>(), num_bytes, 1);
     send_json_to_client(client, response);
+}
+
+void handle_video_request(Client &client, json request){
+    string filepath = server_video_path + request["filename"].get<string>();
+    if(!fs::exists(filepath)){
+        json response = create_video_response(5, vector<char>(), 0, 0);
+        send_json_to_client(client, response);
+        return;
+    }
+    stream_video(client.ssl, filepath, client.socket);
 }
 
 void handle_client_message(Client &client) {
@@ -288,11 +303,26 @@ void handle_client_message(Client &client) {
         }
         if (request["filename"].get<string>() == "") {
             //first request, return list of files
-            vector<string> files = getDatabaseFiles(server_data_path, ".mp3");
+            vector<string> files = getDatabaseFiles(server_audio_path, ".mp3");
             json response = create_audio_list(0, files); 
             send_json_to_client(client, response);
         } else {
             handle_audio_request(client, request); 
+        }
+    }
+    else if(request["type"] == "VideoRequest"){
+        if (client.uid == -1) {
+            json response = create_video_list(6, vector<string>()); // not logged in
+            send_json_to_client(client, response);
+            return;
+        }
+        if (request["filename"].get<string>() == "") {
+            //first request, return list of files
+            vector<string> files = getDatabaseFiles(server_video_path, ".mp4");
+            json response = create_video_list(0, files); 
+            send_json_to_client(client, response);
+        } else {
+            handle_video_request(client, request); 
         }
     }
     else {
@@ -348,8 +378,6 @@ void* worker_function(void* arg) {
     }
     return nullptr;
 }
-
-
 
 // ----------------------- main() ------------------------
 int main() {

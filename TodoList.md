@@ -14,6 +14,7 @@
     - [x] audio
         - [x] file selection
     - [ ] video
+    - [ ] start playing only when the buffer has enough data to play
 - [ ] README
 - [ ] 5~10 min demo video
 

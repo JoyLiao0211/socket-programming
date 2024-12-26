@@ -213,9 +213,7 @@ The following codes are used in responses to indicate the outcome of a request:
 
 3. **A sends the file to B**
 
-```json
-//TODO
-```
+no json here
 
 #### workflow
 - scenario: A wants to send a file to B
@@ -223,6 +221,12 @@ The following codes are used in responses to indicate the outcome of a request:
 1. A: can i send a file to you?
 2. B: ok
 3. A: send the file
+
+### 8. Audio streaming
+ TODO
+
+### 9. Video streaming
+TODO
 
 ## Notes
 - JSON keys are case-sensitive.

@@ -204,6 +204,32 @@ json create_audio_response(int code, int rate, int channels) {
     return response;
 }
 
+// ----------------------- 9. video ------------------------
+json create_video_request(const string &filename){
+    json request;
+    request["type"] = "VideoRequest";
+    request["filename"] = filename;
+    return request;
+}
+
+json create_video_list(int code, vector<string> files){
+    json response;
+    response["type"] = "VideoList";
+    response["code"] = code;
+    response["files"] = files;
+    return response;
+}
+
+json create_video_response(int code, vector<char> data, bool start, bool end){
+    json response;
+    response["type"] = "VideoResponse";
+    response["code"] = code;
+    response["data"] = data;
+    response["start"] = (int)start;
+    response["end"] = (int)end;
+    return response;
+}
+
 // ----------------------- INVALID ------------------------
 
 json create_invalid_response() {

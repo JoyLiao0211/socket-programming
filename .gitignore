@@ -3,4 +3,3 @@ code/Server
 code/Client
 *.o
 *.swp
-./server_data/*
