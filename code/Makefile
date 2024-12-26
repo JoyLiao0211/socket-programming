@@ -1,6 +1,6 @@
 # Compiler and Flags
 CXX = g++
-CXXFLAGS = -Wall -g -I./include
+CXXFLAGS = -Wall -g -I./include `pkg-config --cflags opencv4`
 
 # Source Files
 SRCS = Client.cpp Server.cpp
@@ -15,10 +15,10 @@ debug: CXXFLAGS += -DDEBUG
 debug: all
 
 Client: Client.o
-	$(CXX) $(CXXFLAGS) -o Client Client.o -lssl -lcrypto -lmpg123 -lportaudio
+	$(CXX) $(CXXFLAGS) -o Client Client.o -lssl -lcrypto -lmpg123 -lportaudio `pkg-config --libs opencv4`
 
 Server: Server.o
-	$(CXX) $(CXXFLAGS) -o Server Server.o -lpthread -lssl -lcrypto -lmpg123
+	$(CXX) $(CXXFLAGS) -o Server Server.o -lpthread -lssl -lcrypto -lmpg123 `pkg-config --libs opencv4`
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@

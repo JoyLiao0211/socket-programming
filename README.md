@@ -70,33 +70,7 @@ nlohmann-json
 ```
 sudo apt install libopencv-dev
 ```
-<!-- ```
-sudo apt install -y libopencv-dev
-sudo apt install build-essential cmake git libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev
-sudo apt install python-dev python-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libdc1394-22-dev
-```
-- in `code/opencv_stuff`:
-```
-git clone https://github.com/opencv/opencv.git
-git clone https://github.com/opencv/opencv_contrib.git
-```
-- in `code/opencv_stuff/`:
-```
-cd opencv
-mkdir build && cd build
-cmake -D CMAKE_BUILD_TYPE=RELEASE \
-      -D CMAKE_INSTALL_PREFIX=/usr/local \
-      -D INSTALL_C_EXAMPLES=ON \
-      -D INSTALL_PYTHON_EXAMPLES=ON \
-      -D OPENCV_GENERATE_PKGCONFIG=ON \
-      -D OPENCV_EXTRA_MODULES_PATH=$(pwd)/../../opencv_contrib/modules \
-      -D BUILD_EXAMPLES=ON ..
-```
-- in `code/opencv_stuff/opencv/build`:
-```
-sudo make install
-sudo ldconfig
-``` -->
+
 
 ### PortAudio
 ```

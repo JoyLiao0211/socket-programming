@@ -10,6 +10,7 @@
 #include "Code.h"
 #include "SSL.hpp"
 #include "Audio.hpp"
+#include <opencv2/opencv.hpp>
 
 using namespace std;
 using json = nlohmann::json;

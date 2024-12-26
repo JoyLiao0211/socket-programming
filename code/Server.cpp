@@ -11,6 +11,7 @@
 #include "SSL.hpp"
 #include "CreateMessage.hpp"
 #include "Audio.hpp"
+#include <opencv2/opencv.hpp>
 
 using namespace std;
 using json = nlohmann::json;
