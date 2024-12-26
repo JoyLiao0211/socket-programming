@@ -15,10 +15,10 @@ debug: CXXFLAGS += -DDEBUG
 debug: all
 
 Client: Client.o
-	$(CXX) $(CXXFLAGS) -o Client Client.o -lssl -lcrypto
+	$(CXX) $(CXXFLAGS) -o Client Client.o -lssl -lcrypto -lmpg123 -lportaudio
 
 Server: Server.o
-	$(CXX) $(CXXFLAGS) -o Server Server.o -lpthread -lssl -lcrypto
+	$(CXX) $(CXXFLAGS) -o Server Server.o -lpthread -lssl -lcrypto -lmpg123
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@

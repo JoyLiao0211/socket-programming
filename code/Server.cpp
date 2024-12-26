@@ -10,6 +10,7 @@
 #include "SocketIO.hpp"
 #include "SSL.hpp"
 #include "CreateMessage.hpp"
+#include "Audio.hpp"
 
 using namespace std;
 using json = nlohmann::json;
@@ -167,6 +168,44 @@ void handle_direct_connect(Client &client, json &request){
     json response_to_client = create_direct_connect_response_to_client(7);
     send_json_to_client(client, response_to_client);
 }
+namespace fs = std::filesystem;
+vector<string> getDatabaseFiles(const string& directoryPath, string filetype) {
+    vector<string> files;
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(directoryPath)) {
+            if (entry.is_regular_file() && entry.path().extension() == filetype) {
+                files.push_back(fs::relative(entry.path(), directoryPath).string());
+            }
+        }
+    } catch (const fs::filesystem_error& e) {
+        std::cerr << "Filesystem error: " << e.what() << '\n';
+    } catch (const std::exception& e) {
+        std::cerr << "General error: " << e.what() << '\n';
+    }
+    return files;
+}
+
+void handle_audio_request(Client &client, json request) {
+    string filename = request["filename"];  
+    filename = "server_data/" + filename;
+    Audio audio(filename);
+    if (!audio.initialize()) {
+        cerr << "Audio initialize error\n";
+        return;
+    }
+    json response = create_audio_response(0, audio.rate, audio.channels);
+    send_json_to_client(client, response);
+    int num_bytes = 0;
+    while (audio.read()) {
+        vector<char> vec(audio.output_buffer, audio.output_buffer + audio.done);
+        response = create_audio_data(vec, num_bytes, 0);
+        send_json_to_client(client, response);
+        num_bytes += audio.done;
+    }
+
+    response = create_audio_data(vector<char>(), num_bytes, 1);
+    send_json_to_client(client, response);
+}
 
 void handle_client_message(Client &client) {
     cout << "Received message: " << client.message << endl;
@@ -239,6 +278,20 @@ void handle_client_message(Client &client) {
         }
         handle_direct_connect(client, request);
         return;
+    } else if (request["type"] == "AudioRequest") {
+        if (client.uid == -1) {
+            json response = create_audio_list(6, vector<string>()); // not logged in
+            send_json_to_client(client, response);
+            return;
+        }
+        if (request["filename"].get<string>() == "") {
+            //first request, return list of files
+            vector<string> files = getDatabaseFiles("server_data", ".mp3");
+            json response = create_audio_list(0, files); 
+            send_json_to_client(client, response);
+        } else {
+            handle_audio_request(client, request); 
+        }
     }
     else {
         // invalid command
