@@ -10,15 +10,11 @@
     - [ ] very big files
         1. disallow sending file size more than some threshold?
         2. read and send chunks at the same time?
-<<<<<<< HEAD
 - [ ] streaming
-    - [ ] audio
-        - [ ] file selection
-=======
-- [x] streaming
     - [x] audio
->>>>>>> 92cffb4b9c502f7485af7d5fff92ffa2b7944bcf
+        - [x] file selection
     - [ ] video
+- [ ] README
 - [ ] 5~10 min demo video
 
 ## Bugs
