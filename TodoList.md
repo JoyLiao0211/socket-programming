@@ -7,6 +7,9 @@
         - [x] Server: create mutex lock for every client socket
 - [x] Message Encryption with OpenSSL
 - [x] transfer file with encryption
+    - [ ] very big files
+        1. disallow sending file size more than some threshold?
+        2. read and send chunks at the same time?
 - [x] streaming
     - [x] audio
     - [ ] video
@@ -26,3 +29,5 @@
 
 - [ ] webcam and microphone
 - [ ] GUI interface
+
+![alt text](image.png)
