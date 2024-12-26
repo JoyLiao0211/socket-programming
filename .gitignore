@@ -4,3 +4,4 @@ code/Client
 *.o
 *.swp
 ./server_data/*
+./code/opencv_stuff/*
