@@ -11,7 +11,7 @@
 #include "SSL.hpp"
 #include "Audio.hpp"
 #include "Video.hpp"
-// #include <opencv2/opencv.hpp>
+#include "PrintPretty.hpp"
 
 using namespace std;
 using json = nlohmann::json;
@@ -23,7 +23,7 @@ SSL_CTX *client_ctx, *server_ctx;//does client need two ctx? server & client
 bool logged_in = false;
 string self_username;
 string session_name;
-const int window_width = 40;
+// const int window_width = 40;
 
 struct connected_user{
     int socket;
@@ -84,33 +84,9 @@ bool connect_to_addr(int sock, const string& ip, uint16_t port, SSL *ssl) {
     return 1;
 }
 
-void print_message_with_padding(const string &message, const char padding_char = '=') {
-    int padding_left = (window_width - message.length()) / 2 - 1;
-    int padding_right = window_width - message.length() - padding_left - 2;
-    cout << string(padding_left, '=') << " " << message << " " << string(padding_right, '=') << "\n";
-}
 
-void print_message_box_with_padding(const string &message, const string &sender) {
-    // ╚ ╔ ╗ ╝ ═ ║
-    //print ╔══ sender ══╗
-    int left_padding = (window_width - sender.length() - 4) / 2;
-    int right_padding = window_width - sender.length() - 4 - left_padding;
-    cout << "╔";
-    while(left_padding--)cout << "═";
-    cout << " " << sender << " ";
-    while(right_padding--)cout << "═";
-    cout << "╗\n";
-    //print ║ message    ║
-    int max_message_len = window_width - 4;
-    for(int start = 0; start < message.length(); start += max_message_len){
-        int cur_message_len = min(max_message_len, (int)message.length() - start);
-        cout << "║ " << message.substr(start, cur_message_len) << string(max_message_len - message.substr(start, max_message_len).length(), ' ') << " ║\n";
-    }
-    //print ╚════════════╝
-    cout << "╚";
-    for(int i = 0; i < window_width - 2; i++)cout << "═";
-    cout << "╝\n";
-}
+
+
 
 void print_all_commands(){
     if(!logged_in)cout<<"1: Login\n";
