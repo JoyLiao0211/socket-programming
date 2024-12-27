@@ -4,7 +4,7 @@ By 廖禹喬(b11902007) & 賴昭勳(b11902107)
 
 ## Environment Setup
 
-- This prject is intended fr linux envirnment
+- This project is intended for linux environment
 - nlohmann-json: no installation needed
 - PortAudio for audio streaming:
     ```shell
@@ -12,7 +12,7 @@ By 廖禹喬(b11902007) & 賴昭勳(b11902107)
     sudo apt-get install portaudio19-dev
     sudo apt-get install libmpg123-dev
     ```
-- ffmpeg fr vide streaming
+- ffmpeg fpr video streaming
     ```shell
     sudo apt install ffmpeg
     ```
@@ -49,13 +49,5 @@ By 廖禹喬(b11902007) & 賴昭勳(b11902107)
 
 - transfered file size must be less than 10 MB
 
-
-<!-- <details>
-<summary><span>Detailed Usage</span></summary>
-
-- Login / Logout
-
-
-</details> -->
 
 ## More details can be found in `Documentation.md`
