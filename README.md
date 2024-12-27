@@ -1,84 +1,56 @@
 # Socket Programming Project
 
-## Phase 1
-
-This project implements a simple client-server communication system using socket programming.
-
-### Getting Started
-
-[demo video](https://youtu.be/eVZX76FQUVY)
-
-### Prerequisites
-This project is designed to run in a Linux environment. Ensure you have the following tools installed:
-- C++ Compiler
-- Make
-
-### Building the Project
-
-To build the server and client:
-
-```bash
-cd code
-make
-```
-
-This will compile the source files and produce executables for the `server` and `client`.
-
-### Cleaning Build Files
-
-To remove all compiled files and reset the build:
-
-```bash
-make clean
-```
-
-This cleans up all compiled binaries and object files.
-
-### Running the Project
-
-1. **Start the Server**  
-   Open a terminal and run:
-
-   ```bash
-   ./server
-   ```
-
-   The server will run continuously and retain all registered account data while active.
-
-2. **Run the Client**  
-   In a new terminal, navigate to the `code` directory and execute:
-
-   ```bash
-   ./client
-   ```
-
-   The client will connect to the server, enabling user interactions as defined in your project.
-
-### Important Notes
-
-- **Server Persistence**: The server must remain active to retain account data. If the server is stopped, all registered data will be lost.
-- **Multiple Clients**: This setup supports multiple clients interacting with the server simultaneously, provided that socket connections are handled correctly.
-
 ## Phase 2
 
-### json: (no install needed)
+### Environment Setup
+
+- This prject is intended fr linux envirnment
+- nlohmann-json: no installation needed
+- PortAudio for audio streaming:
+   ```bash
+   sudo apt-get install libasound-dev
+   sudo apt-get install portaudio19-dev
+   sudo apt-get install libmpg123-dev
+   ```
+- ffmpeg fr vide streaming
+   ```bash
+   sudo apt install ffmpeg
+   ```
+
+### Building
+
+- Execute:
+
 ```
-nlohmann-json
+> cd code
+code> make
 ```
 
-### opencv: wait no i don't want to use this
+- Run Server (note: server must be on all time)
+
 ```
-sudo apt install libopencv-dev
+code> ./Server
 ```
 
-### ffmpeg
+- Run each Client in a separate shell
+
 ```
-sudo apt install ffmpeg
+code> ./Client
 ```
 
-### PortAudio
+- Clean up
+
 ```
-sudo apt-get install libasound-dev
-sudo apt-get install portaudio19-dev
-sudo apt-get install libmpg123-dev
+code> make clean
 ```
+
+### Server usage
+
+- displayed video files must be under `server_data/video_files` with .mp4 type
+- displayed audio files must be under `server_data/audio_files` with .mp3 type
+- you can add new files in runtime
+
+### Client usage
+
+- transfered file size must be less than 10 MB
+- 
