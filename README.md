@@ -50,10 +50,12 @@ By 廖禹喬(b11902007) & 賴昭勳(b11902107)
 - transfered file size must be less than 10 MB
 
 
-<details>
+<!-- <details>
 <summary><span>Detailed Usage</span></summary>
 
 - Login / Logout
 
 
-</details>
+</details> -->
+
+## More details can be found in `Documentation.md`
