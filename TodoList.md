@@ -28,6 +28,7 @@
     - send relay message
     - send direct message
     - send text.txt file, show accept file & reject file
+    - put the chill.mp3 and late_for_work.mp4 in dir on runtime
     - play audio: chill.mp3
     - play video: late_for_work.mp4
 

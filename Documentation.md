@@ -223,10 +223,91 @@ no json here
 3. A: send the file
 
 ### 8. Audio streaming
- TODO
+
+1. **audio request from client:**
+
+```json
+{
+    "type": "AudioRequest",
+    "filename": <string>
+}
+```
+- if filename is empty then request for audio list
+
+2. **audio list response from server**
+
+```json
+{
+    "type": "AudioList",
+    "code": <int>,
+    "files": [
+        <string>,
+        <string>,
+        ...
+    ]
+}
+```
+
+3. **audio metadata response from server**
+
+```json
+{
+    "type": "AudioResponse", 
+    "code": <int>,
+    "rate": <int>,
+    "channels": <int>
+}
+```
+
+4.**audio data response from server**
+
+```json
+{
+    "type": "AudioData",
+    "data": vector<char>,
+    "pos": <int>,
+    "end": <int>
+}
+```
 
 ### 9. Video streaming
-TODO
+
+1. **video request from client**
+
+```json
+{
+    "type": "VideoRequest",
+    "filename": <string>
+}
+```
+- request for list: filename = ""
+
+2. **video list response from server**
+
+```json
+{
+    "type": "VideoList",
+    "code": <int>,
+    "files": [ <string>, <string>, ...]
+}
+```
+
+3. **video data response**
+
+```json
+{
+    "type": "VideoResponse",
+    "code": <int>,
+    "data": vector<char>,
+    "start": <int>,
+    "end": <int>
+}
+```
+- start and end are used as bool
+- first json of a video must have start = 1, end = 0, data = {}
+- all json containing data must have start = 0, end = 0, data = {}
+- last json of a video must have start = 0, end = 1, data = {}
+
 
 ## Notes
 - JSON keys are case-sensitive.
