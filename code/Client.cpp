@@ -23,6 +23,7 @@ SSL_CTX *client_ctx, *server_ctx;//does client need two ctx? server & client
 bool logged_in = false;
 string self_username;
 string session_name;
+const int window_width = 40;
 
 struct connected_user{
     int socket;
@@ -83,9 +84,40 @@ bool connect_to_addr(int sock, const string& ip, uint16_t port, SSL *ssl) {
     return 1;
 }
 
+void print_message_with_padding(const string &message, const char padding_char = '=') {
+    int padding_left = (window_width - message.length()) / 2 - 1;
+    int padding_right = window_width - message.length() - padding_left - 2;
+    cout << string(padding_left, '=') << " " << message << " " << string(padding_right, '=') << "\n";
+}
+
+void print_message_box_with_padding(const string &message, const string &sender) {
+    // ╚ ╔ ╗ ╝ ═ ║
+    //print ╔══ sender ══╗
+    int left_padding = (window_width - sender.length() - 4) / 2;
+    int right_padding = window_width - sender.length() - 4 - left_padding;
+    cout << "╔";
+    while(left_padding--)cout << "═";
+    cout << " " << sender << " ";
+    while(right_padding--)cout << "═";
+    cout << "╗\n";
+    //print ║ message    ║
+    int max_message_len = window_width - 4;
+    for(int start = 0; start < message.length(); start += max_message_len){
+        int cur_message_len = min(max_message_len, (int)message.length() - start);
+        cout << "║ " << message.substr(start, cur_message_len) << string(max_message_len - message.substr(start, max_message_len).length(), ' ') << " ║\n";
+    }
+    //print ╚════════════╝
+    cout << "╚";
+    for(int i = 0; i < window_width - 2; i++)cout << "═";
+    cout << "╝\n";
+}
+
 void print_all_commands(){
     if(!logged_in)cout<<"1: Login\n";
-    else cout<<"1: Logout\n";
+    else{
+        print_message_with_padding("Hi " + self_username + "!");
+        cout<<"1: Logout\n";
+    }
     cout<<"2: Register\n";
     cout<<"3: See Online Users\n";
     if(logged_in){
@@ -111,10 +143,7 @@ void direct_connect_thread_function(string other) {//from peers
             return;
         }
         else if(message["type"] == "DirectMessage"){
-            cout << "You got a new DIRECT message from " << other << "\n";
-            cout << "==========\n";
-            cout << (string)message["message"]<< "\n";
-            cout << "==========\n";
+            print_message_box_with_padding(message["message"], other);
         }
         else if(message["type"] == "TransferFileRequest"){
             handle_receive_file(other, message);
@@ -135,7 +164,9 @@ json get_response_from_peer(string other){
 }
 
 void receive_response_thread() {// response from server
-    cerr << "Receive response thread started\n";
+    #ifdef DEBUG
+        cerr << "Receive response thread started\n";
+    #endif
     while (true) {
         json response = get_json(server_ssl);
         if(response.empty()){
@@ -144,25 +175,23 @@ void receive_response_thread() {// response from server
         }
         //cout << "Received response: " << response.dump(4) << endl;
         if (response["type"] == "NewMessage") {
-            cout << "You got a new message from " << response["from"] << "\n";
-            cout << "==========\n";
-            cout << (string)response["message"]<< "\n";
-            cout << "==========\n";
+            cout << "You got a new message!\n";
+            print_message_box_with_padding(response["message"], response["from"]);
         }
         else if(response["type"] == "DirectConnectRequest"){
-            cout<<"receive direct connect request\n";
-            cout<<response.dump()<<"\n";
+            // cout<<"receive direct connect request\n";
+            // cout<<response.dump()<<"\n";
             string username = response["username"];
             int code=0;//response to server
 
             //first send response to peer
-            json response_to_peer = create_direct_connect_response_to_client_from_peer(response["passcode"]); cerr<<"line: "<<__LINE__<<"\n";
+            json response_to_peer = create_direct_connect_response_to_client_from_peer(response["passcode"]); 
             string ip = response["IP"].get<string>();
             int port = response["port"].get<int>();
             // connect to ip & port
-            int peer_sock = create_socket(); cerr<<"line: "<<__LINE__<<"\n";
-            SSL* peer_ssl = SSL_new(client_ctx); cerr<<"line: "<<__LINE__<<"\n";
-            if(!connect_to_addr(peer_sock, ip, port, peer_ssl)){ cerr<<"line: "<<__LINE__<<"\n";
+            int peer_sock = create_socket(); 
+            SSL* peer_ssl = SSL_new(client_ctx); 
+            if(!connect_to_addr(peer_sock, ip, port, peer_ssl)){ 
                 cout<<"Failed to connect to peer\n";
                 code = 9;
             }
@@ -172,14 +201,14 @@ void receive_response_thread() {// response from server
             }
             else{//successfull connection
                 cout<<"Connected to "<<username<<"\n";
-                connected_users[username] = connected_user(peer_sock, username, peer_ssl); cerr<<"line: "<<__LINE__<<"\n";
+                connected_users[username] = connected_user(peer_sock, username, peer_ssl); 
                 //start thread to receive messages from peer
-                thread direct_thread(direct_connect_thread_function, username); cerr<<"line: "<<__LINE__<<"\n";
-                direct_thread.detach(); cerr<<"line: "<<__LINE__<<"\n";
+                thread direct_thread(direct_connect_thread_function, username); 
+                direct_thread.detach(); 
             }
-            json response_to_server = create_direct_connect_response_to_server(code); cerr<<"line: "<<__LINE__<<"\n";
-            cout<<"response to server: "<<response_to_server.dump(4)<<"\n";  cerr<<"line: "<<__LINE__<<"\n";
-            send_json(server_ssl, response_to_server); cerr<<"line: "<<__LINE__<<"\n";
+            json response_to_server = create_direct_connect_response_to_server(code); 
+            // cout<<"response to server: "<<response_to_server.dump(4)<<"\n";  
+            send_json(server_ssl, response_to_server); 
         }
         else {
             message_queue.push(response);
@@ -251,7 +280,7 @@ bool establish_direct_connection(string other){
     }
     //get response from server first
     json res_json = get_response();
-    cout<<"response from server: "<<res_json.dump()<<"\n";
+    // cout<<"response from server: "<<res_json.dump()<<"\n";
     int res_code = res_json["code"].get<int>();
     cout << RESPONSE_MESSAGES[res_code] << endl;
     if(res_code != 0){
@@ -513,7 +542,7 @@ void handle_video_streaming(){
 }
 
 void process_command(const string& cmd) {
-    string username, password, message_body;
+    // string username, password, message_body;
     if(cmd == "1"){//login / logout
         if (logged_in) {//logout
             json message = create_logout_request();
@@ -525,6 +554,7 @@ void process_command(const string& cmd) {
                 self_username = "";
             }
         } else {//login
+            string username, password;
             cout << "Username: ";
             cin >> username;
             cout << "Password: ";
@@ -540,6 +570,11 @@ void process_command(const string& cmd) {
         }
     }
     else if (cmd == "2") {//register
+        string username, password;
+        if (logged_in) {
+            cout << "You need to logout first\n";
+            return;
+        }
         cout << "Username: ";
         cin >> username;
         cout << "Password: ";
@@ -550,12 +585,28 @@ void process_command(const string& cmd) {
         cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
     }
     else if (cmd == "3") { // see Online Users
-        json message = create_online_users_request();
-        send_json(server_ssl, message);
-        json res_json = get_response();
-        cout << res_json.dump(4) << endl;
+        json message = create_online_users_request(); cerr<<"line: "<<__LINE__<<"\n";
+        send_json(server_ssl, message); cerr<<"line: "<<__LINE__<<"\n";
+        json res_json = get_response(); cerr<<"line: "<<__LINE__<<"\n";
+        // cout << res_json.dump(4) << endl;
+        if(res_json["code"].get<int>() != 0){
+            cout<<RESPONSE_MESSAGES[res_json["code"].get<int>()]<<"\n";
+            return;
+        } cerr<<"line: "<<__LINE__<<"\n";
+        vector<string> users = res_json["users"].get<vector<string>>(); cerr<<"line: "<<__LINE__<<"\n";
+        if(users.empty()){
+            cout<<"No online users\n";
+        }
+        else{
+            cout << "Online users:\n";
+            for(string user: users){
+                cout<<"    "<<user<<"\n";
+            }
+        }
+        return;
     }
     else if (cmd == "4") { // send message (relay)
+        string username, message_body;
         if (!logged_in) {
             cout << "You need to login first\n";
             return;
@@ -568,7 +619,7 @@ void process_command(const string& cmd) {
         json message = create_send_message_request(username, message_body);
         send_json(server_ssl, message);
         json res_json = get_response();
-        cout << res_json.dump(4) << endl;
+        // cout << res_json.dump(4) << endl;
         cout << RESPONSE_MESSAGES[res_json["code"].get<int>()] << endl;
     }
     else if(cmd == "5"){//send direct message

@@ -112,8 +112,11 @@ bool send_json(SSL *ssl, const nlohmann::json& message) {
     // using json = nlohmann::json;
     // Serialize JSON to string
     std::string message_str = message.dump(); // or message.dump(4) if you prefer pretty print
-    std::cerr<<"sending\n";
-    if(message_str.length()<50)std::cerr<<message_str<<"\n";
+    #ifdef DEBUG
+        std::cerr<<"sending\n";
+        if(message_str.length()<50)std::cerr<<message_str<<"\n";
+    #endif
+    
     uint32_t msg_length = static_cast<uint32_t>(message_str.size());
 
     // Convert message length to network byte order
@@ -147,27 +150,18 @@ nlohmann::json get_json(SSL *ssl, bool peek_first = false) {
     }
 
     if (peek_first) {//peek if any data is in the buffer
-        // std::cerr<<"peeking\n";
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);//is this neccessary? 
         char c;
         int bytes_peeked = SSL_peek(ssl, &c, 1);
         fcntl(fd, F_SETFL, flags);
         if(bytes_peeked <= 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){
-            // fcntl(fd, F_SETFL, flags);
-            // std::cerr<<"no data yet\n";
             return {};
         }else if(bytes_peeked <= 0){
-            // if(errno == EAGAIN || errno == EWOULDBLOCK){
-            //     fcntl(fd, F_SETFL, flags);
-            
-            //     return eof_response;
-            // }
-            std::cerr << "[get_json] Error peeking data: EOF\n";
+            std::cerr << "[get_json] Cannot peek data: EOF\n";
             json eof_response;
             eof_response["type"] = "EOF";
             return eof_response;
         }
-        // else std::cerr<<"peeked "<<bytes_peeked<<" bytes\n";
         
     }
 
