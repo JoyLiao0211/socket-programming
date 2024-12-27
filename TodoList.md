@@ -13,9 +13,8 @@
 - [ ] streaming
     - [x] audio
         - [x] file selection
-    - [ ] video
-    - [ ] start playing only when the buffer has enough data to play
-- [ ] README
+    - [x] video
+- [x] README
 - [ ] 5~10 min demo video
     - go over packages
     - make
@@ -31,6 +30,7 @@
     - put the chill.mp3 and late_for_work.mp4 in dir on runtime
     - play audio: chill.mp3
     - play video: late_for_work.mp4
+    - **code explanation!???**
 
 
 ## Bugs
@@ -39,7 +39,6 @@
 - [x] a b client, a exit, b read eof (its a feature not a bug)
 - [x] when server closes connection, client process terminates
 - [x] cert stuffs
-    - [ ] arg: where cert
     - [x] auto create cert
 - [ ] client can press enter to stop playing audio
 
