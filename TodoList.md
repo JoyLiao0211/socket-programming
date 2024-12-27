@@ -17,6 +17,20 @@
     - [ ] start playing only when the buffer has enough data to play
 - [ ] README
 - [ ] 5~10 min demo video
+    - go over packages
+    - make
+    - run server
+    - run one client
+    - register + login
+    - run client 2
+    - register + login
+    - see online users
+    - send relay message
+    - send direct message
+    - send text.txt file, show accept file & reject file
+    - play audio: chill.mp3
+    - play video: late_for_work.mp4
+
 
 ## Bugs
 - [ ] remove error codes, use 1 for all errors and add error message field

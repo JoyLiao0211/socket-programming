@@ -1,56 +1,59 @@
 # Socket Programming Project
 
-## Phase 2
+By 廖禹喬(b11902007) & 賴昭勳(b11902107)
 
-### Environment Setup
+## Environment Setup
 
 - This prject is intended fr linux envirnment
 - nlohmann-json: no installation needed
 - PortAudio for audio streaming:
-   ```bash
-   sudo apt-get install libasound-dev
-   sudo apt-get install portaudio19-dev
-   sudo apt-get install libmpg123-dev
-   ```
+    ```shell
+    sudo apt-get install libasound-dev
+    sudo apt-get install portaudio19-dev
+    sudo apt-get install libmpg123-dev
+    ```
 - ffmpeg fr vide streaming
-   ```bash
-   sudo apt install ffmpeg
-   ```
+    ```shell
+    sudo apt install ffmpeg
+    ```
 
-### Building
+## Building
 
 - Execute:
-
-```
-> cd code
-code> make
-```
-
+    ```shell
+    > cd code
+    code> make
+    ```
 - Run Server (note: server must be on all time)
-
-```
-code> ./Server
-```
-
+    ```shell
+    code> ./Server
+    ```
 - Run each Client in a separate shell
-
-```
-code> ./Client
-```
-
+    ```shell
+    code> ./Client
+    ```
 - Clean up
+    ```shell
+    code> make clean
+    ```
 
-```
-code> make clean
-```
+## Usage
 
-### Server usage
+### Server
 
-- displayed video files must be under `server_data/video_files` with .mp4 type
-- displayed audio files must be under `server_data/audio_files` with .mp3 type
+- displayed video files must be under `server_data/video_files` with `.mp4` type
+- displayed audio files must be under `server_data/audio_files` with `.mp3` type
 - you can add new files in runtime
 
-### Client usage
+### Client
 
 - transfered file size must be less than 10 MB
-- 
+
+
+<details>
+<summary><span>Detailed Usage</span></summary>
+
+- Login / Logout
+
+
+</details>
