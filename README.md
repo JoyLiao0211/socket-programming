@@ -1,6 +1,7 @@
 # Socket Programming Project
 
 By 廖禹喬(b11902007) & 賴昭勳(b11902107)
+Demo video: https://youtu.be/9audTnXgZUI
 
 ## Environment Setup
 
